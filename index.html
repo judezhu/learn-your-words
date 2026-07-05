@@ -64,9 +64,24 @@ document.addEventListener('DOMContentLoaded', async function() {
       throw new Error('missing bundle data: ' + file);
     }
 
-    const [manifest, templateData] = await Promise.all([
+    // pokemon.json holds the curated Pokémon list (id / English / 中文 / pinyin)
+    // as a plain, human-readable file you can browse and edit on GitHub. It is
+    // injected as window.__POKEMON__ before the app script runs. Missing/broken
+    // file just means an empty curated list — the app still boots.
+    async function loadPokemon() {
+      try {
+        const res = await fetch('pokemon.json');
+        if (res.ok) return await res.json();
+      } catch (err) {
+        console.warn('[bundler] pokemon.json fetch failed:', err);
+      }
+      return [];
+    }
+
+    const [manifest, templateData, pokemonData] = await Promise.all([
       loadBundleData('bundle.manifest.json', '__bundler/manifest'),
       loadBundleData('bundle.template.json', '__bundler/template'),
+      loadPokemon(),
     ]);
     let template = templateData;
 
@@ -129,6 +144,8 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const resourceScript = '<script>window.__resources = ' +
       JSON.stringify(resourceMap).split('</' + 'script>').join('<\\/' + 'script>') +
+      ';window.__POKEMON__ = ' +
+      JSON.stringify(pokemonData).split('</' + 'script>').join('<\\/' + 'script>') +
       ';</' + 'script>';
     // Inject after <head> so the DOCTYPE stays first; prepending the script
     // would push the parser into quirks mode. DOMParser always emits a <head>
