@@ -64,7 +64,7 @@ const state = {
   result: null,
   matches: [],
   recording: false,
-  micLang: 'en',
+  micLang: 'zh',
   notFound: false,
   serviceError: false,
   cat: 'words',
@@ -735,13 +735,13 @@ function showHome() {
 }
 
 function homeLabel() {
-  if (state.cat !== 'pokemon') return '✨ Word friends to explore';
+  if (state.cat !== 'pokemon') return '✨ 去认识的单词朋友';
   const baseCount = (liveList && liveList.length) || (pokedex && pokedex.length) || 0;
   if (!baseCount) {
-    if (state.pokeErr) return '⚡ Pokémon (离线名单)';
-    return '⚡ Loading all Pokémon… ✨';
+    if (state.pokeErr) return '⚡ 宝可梦（离线名单）';
+    return '⚡ 宝可梦加载中…';
   }
-  return '⚡ ' + baseCount + ' 只宝可梦 — tap one!';
+  return '⚡ ' + baseCount + ' 只宝可梦 — 点一只！';
 }
 
 function render() {
@@ -749,9 +749,9 @@ function render() {
 
   if (ui.q.value !== state.query) ui.q.value = state.query;
   ui.clear.hidden = !state.query;
-  ui.q.placeholder = 'Type a word, press Enter';
-  ui.title.textContent = 'Learn Your Words';
-  ui.sub.textContent = 'Tap a friend or search!';
+  ui.q.placeholder = '输入单词，按回车';
+  ui.title.textContent = '学单词';
+  ui.sub.textContent = '点一个朋友，或搜一搜！';
   ui.emoji.textContent = '🐾';
 
   ui.mic.classList.toggle('rec', state.recording);
@@ -974,6 +974,82 @@ function bindArtTilt(stage, tilt) {
   stage.addEventListener('pointercancel', endTouch);
 }
 
+// A character that should sit under its own pinyin syllable.
+// Punctuation (parentheses, middle dots) stays in the line with no syllable.
+const ZH_SLOT = /[\p{Script=Han}A-Za-z0-9\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A]/u;
+const ZH_OPEN = new Set([...'（(【「『〈《[{']);
+
+function chineseRuby(zh, py) {
+  const syllables = String(py || '').trim().split(/\s+/).filter(Boolean);
+  const chars = [...zh];
+  const slots = chars.filter((ch) => ZH_SLOT.test(ch)).length;
+  if (!syllables.length || slots !== syllables.length) return null;
+  const pieces = [];
+  let pending = '';
+  let i = 0;
+  for (const ch of chars) {
+    if (ZH_SLOT.test(ch)) {
+      pieces.push({ py: syllables[i++], before: pending, ch, after: '' });
+      pending = '';
+    } else if (ZH_OPEN.has(ch) || !pieces.length) {
+      pending += ch;
+    } else {
+      pieces[pieces.length - 1].after += ch;
+    }
+  }
+  if (pending && pieces.length) pieces[pieces.length - 1].after += pending;
+  const wrap = document.createElement('span');
+  wrap.className = 'zh-ruby';
+  for (const piece of pieces) {
+    const cell = document.createElement('span');
+    cell.className = 'zh-cell';
+    const core = document.createElement('span');
+    core.className = 'zh-core';
+    const pyEl = document.createElement('span');
+    pyEl.className = 'zh-py';
+    pyEl.textContent = piece.py;
+    const chEl = document.createElement('span');
+    chEl.className = 'zh-ch';
+    chEl.textContent = piece.ch;
+    core.append(pyEl, chEl);
+    if (piece.before) {
+      const mark = document.createElement('span');
+      mark.className = 'zh-punct';
+      mark.textContent = piece.before;
+      cell.append(mark);
+    }
+    cell.append(core);
+    if (piece.after) {
+      const mark = document.createElement('span');
+      mark.className = 'zh-punct';
+      mark.textContent = piece.after;
+      cell.append(mark);
+    }
+    wrap.append(cell);
+  }
+  return wrap;
+}
+
+function fitChinese() {
+  const ruby = ui.zh.querySelector('.zh-ruby');
+  if (!ruby || ui.zhLine.hidden) return;
+  ui.zh.style.fontSize = '';
+  const rows = () => {
+    const groups = new Map();
+    for (const el of ruby.children) groups.set(el.offsetTop, (groups.get(el.offsetTop) || 0) + 1);
+    return [...groups.values()];
+  };
+  const orphan = (lines) => lines.length > 1 && lines[lines.length - 1] === 1;
+  let size = 46;
+  let lines = rows();
+  while (orphan(lines) && size > 34) {
+    size -= 2;
+    ui.zh.style.fontSize = size + 'px';
+    lines = rows();
+  }
+  if (orphan(lines)) ui.zh.style.fontSize = '';
+}
+
 function renderResult() {
   const r = state.result;
   const key = r ? [r.enD, r.zh, r.pinyin, r.img || '', r.emoji || '', r.ai ? 1 : 0, r.exEn || '', r.exZh || ''].join('\n') : '';
@@ -986,10 +1062,22 @@ function renderResult() {
   ui.en.textContent = r.enD || r.en || '';
   const zh = r.zh || '';
   const py = r.pinyin || '';
-  ui.zh.textContent = zh;
   ui.zhLine.hidden = !zh;
-  ui.py.textContent = py;
-  ui.py.hidden = !py;
+  ui.zh.replaceChildren();
+  ui.py.textContent = '';
+  ui.py.hidden = true;
+  if (zh) {
+    const ruby = chineseRuby(zh, py);
+    if (ruby) ui.zh.append(ruby);
+    else {
+      ui.zh.textContent = zh;
+      if (py) {
+        ui.py.textContent = py;
+        ui.py.hidden = false;
+      }
+    }
+    fitChinese();
+  }
 
   ui.art.replaceChildren();
   if (r.img) {
@@ -1033,7 +1121,7 @@ function renderResult() {
 
   const word = signWordOf(r);
   ui.signRow.hidden = !word;
-  if (word) ui.signLabel.textContent = 'See the sign for "' + (r.enD || r.en) + '"';
+  if (word) ui.signLabel.textContent = '看手语 · See the sign for "' + (r.enD || r.en) + '"';
   if (!word && state.signOpen) {
     state.signOpen = false;
     state.signVideo = null;
@@ -1229,13 +1317,20 @@ function renderEvo() {
   ui.evo.replaceChildren();
   const label = document.createElement('div');
   label.className = 'evo-label';
-  label.textContent = '进化 · Evolution';
+  label.replaceChildren();
+  const labelZh = document.createElement('span');
+  labelZh.className = 'label-zh';
+  labelZh.textContent = '进化';
+  label.append(labelZh, ' · Evolution');
   ui.evo.append(label);
   const chain = evoChain(r.id);
   if (!chain) {
     const none = document.createElement('p');
     none.className = 'evo-none';
-    none.textContent = "不会进化 · Doesn't evolve";
+    const noneZh = document.createElement('span');
+    noneZh.className = 'label-zh';
+    noneZh.textContent = '不会进化';
+    none.append(noneZh, " · Doesn't evolve");
     ui.evo.append(none);
   } else {
     ui.evo.append(evoLine(evoTree(chain.branches, chain.levels), chain.focus));
@@ -1254,7 +1349,7 @@ function renderSign() {
   const word = signWordOf(r);
   const page = word ? signPage(word) : 'https://www.signasl.org/';
   const key = [state.signLoading ? 1 : 0, state.signVideo || '', state.signEmbed || '', word].join('|');
-  ui.signTitle.textContent = 'Sign for "' + ((r && (r.enD || r.en)) || '') + '"';
+  ui.signTitle.textContent = '手语 · Sign for "' + ((r && (r.enD || r.en)) || '') + '"';
   ui.signOpen.href = page;
   if (key === signKey) return;
   signKey = key;
@@ -1295,7 +1390,7 @@ function renderMatches() {
     return;
   }
   const n = list.length;
-  ui.matchLabel.textContent = '找到 ' + n + ' 只 — tap one!';
+  ui.matchLabel.textContent = '找到 ' + n + ' 只 — 点一只！';
   const key = list.map((s) => s.id + (s.exact ? '!' : '')).join(',');
   if (key === matchKey) return;
   matchKey = key;
@@ -1314,13 +1409,14 @@ function wordChip(w, pill) {
   const en = document.createElement('span');
   en.className = pill ? '' : 'en';
   en.textContent = w.enD || w.en;
-  b.append(emo, en);
-  if (!pill) {
+  b.append(emo);
+  if (w.zh) {
     const zh = document.createElement('span');
     zh.className = 'zh';
-    zh.textContent = w.zh || '';
+    zh.textContent = w.zh;
     b.append(zh);
   }
+  b.append(en);
   b.addEventListener('click', () => pickWord(w));
   return b;
 }
@@ -1394,7 +1490,7 @@ function pokeChip(item, art) {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'poke-chip' + (art ? ' is-art' : '') + (item.exact ? ' is-exact' : '');
-  b.title = item.enD + (item.zh ? ' · ' + item.zh : '');
+  b.title = (item.zh ? item.zh + ' · ' : '') + item.enD;
   const img = document.createElement('img');
   img.src = art ? artUrl(item.id) : spriteUrl(item.id);
   if (art) attachPokeFallback(img, item.id);
@@ -1408,7 +1504,7 @@ function pokeChip(item, art) {
   const zh = document.createElement('span');
   zh.className = 'zh';
   zh.textContent = item.zh || '';
-  b.append(img, en, zh);
+  b.append(img, zh, en);
   b.addEventListener('click', () => pickFromDex(item));
   return b;
 }
@@ -1491,6 +1587,7 @@ function bind() {
   });
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', onScroll);
+  window.addEventListener('resize', fitChinese);
 }
 
 loadCache();

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ffe1ec">
-  <title>Learn Your Words · 学单词</title>
+  <title>学单词 · Learn Your Words</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -13,82 +13,84 @@
     <section id="app-screen">
       <header class="top">
         <div class="top-text">
-          <div id="app-title" class="app-title">Learn Your Words</div>
-          <div id="app-sub" class="app-sub">Tap a friend or search!</div>
+          <div id="app-title" class="app-title">学单词</div>
+          <div id="app-sub" class="app-sub">点一个朋友，或搜一搜！ · Tap a friend or search!</div>
         </div>
         <div id="app-emoji" class="top-emoji" aria-hidden="true">🐾</div>
       </header>
 
       <div class="search">
         <span class="search-icon" aria-hidden="true">🔍</span>
-        <input id="q" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type a word, press Enter" aria-label="Search">
+        <input id="q" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="输入单词，按回车" aria-label="搜索">
         <button type="button" id="btn-clear" class="clear" hidden title="Clear" aria-label="清除 Clear">✕</button>
         <button type="button" id="btn-mic" class="mic" title="Speak" aria-label="Speak">🎤</button>
       </div>
 
       <div class="mic-langs">
-        <span>Mic hears:</span>
-        <button type="button" id="btn-mic-en" class="pill on">EN</button>
-        <button type="button" id="btn-mic-zh" class="pill">中文</button>
+        <span>麦克风听：</span>
+        <button type="button" id="btn-mic-zh" class="pill on">中文</button>
+        <button type="button" id="btn-mic-en" class="pill">EN</button>
       </div>
 
-      <div id="mic-listen" class="listen" hidden>🎙️ Listening… say a word!</div>
+      <div id="mic-listen" class="listen" hidden>🎙️ 正在听… 说一个词！</div>
       <div id="mic-msg" class="mic-msg" hidden></div>
 
       <div id="looking" class="looking" hidden>
         <div class="spinner" aria-hidden="true"></div>
-        <div class="looking-title">Looking it up… ✨</div>
-        <div class="looking-sub">Finding the word for you</div>
+        <div class="looking-title">正在查找… ✨</div>
+        <div class="looking-sub">正在找这个词 · Finding the word</div>
       </div>
 
       <article id="result" class="card" hidden>
-        <div id="result-badge" class="badge" hidden>✨ LOOKED UP JUST FOR YOU</div>
+        <div id="result-badge" class="badge" hidden>✨ 专门为你查到的</div>
         <div id="result-art" class="art"></div>
-        <div class="word-line">
-          <span id="result-en" class="en-word"></span>
-          <button type="button" id="speak-en" class="speak speak-en" title="Say it in English" aria-label="Say it in English">🔊</button>
-        </div>
         <div id="zh-line" class="word-line">
-          <span id="result-zh" class="zh-word"></span>
-          <button type="button" id="speak-zh" class="speak speak-zh" title="Say it in Chinese" aria-label="Say it in Chinese">🔊</button>
+          <div class="zh-stack">
+            <div id="result-py" class="pinyin" hidden></div>
+            <span id="result-zh" class="zh-word"></span>
+          </div>
+          <button type="button" id="speak-zh" class="speak speak-zh" title="用中文读" aria-label="用中文读">🔊</button>
         </div>
-        <div id="result-py" class="pinyin"></div>
+        <div class="word-line en-line">
+          <span id="result-en" class="en-word"></span>
+          <button type="button" id="speak-en" class="speak speak-en" title="用英文读" aria-label="用英文读">🔊</button>
+        </div>
 
         <div id="result-evo" class="evo" role="group" aria-label="进化 Evolution" hidden></div>
 
         <div id="result-sign" class="sign-row" hidden>
           <button type="button" id="btn-sign" class="sign-btn">
             <span aria-hidden="true">👋</span>
-            <span id="sign-label">See the sign</span>
+            <span id="sign-label">看手语</span>
           </button>
-          <div class="sign-hint">Opens a video of the whole-word sign 🎬</div>
+          <div class="sign-hint">打开这个词的手语视频 🎬</div>
         </div>
 
         <div id="result-ex" class="examples" hidden>
-          <div class="ex-label">Try saying it</div>
+          <div class="ex-label"><span class="label-zh">说说看</span> · Try saying it</div>
           <div class="ex-line">
-            <button type="button" id="speak-ex-en" class="speak speak-mini speak-en-soft" title="Say the English sentence" aria-label="Say the English sentence">🔊</button>
-            <span id="result-ex-en"></span>
+            <button type="button" id="speak-ex-zh" class="speak speak-mini speak-zh-soft" title="读中文句子" aria-label="读中文句子">🔊</button>
+            <span id="result-ex-zh" class="ex-zh"></span>
           </div>
           <div class="ex-line">
-            <button type="button" id="speak-ex-zh" class="speak speak-mini speak-zh-soft" title="Say the Chinese sentence" aria-label="Say the Chinese sentence">🔊</button>
-            <span id="result-ex-zh" class="ex-zh"></span>
+            <button type="button" id="speak-ex-en" class="speak speak-mini speak-en-soft" title="读英文句子" aria-label="读英文句子">🔊</button>
+            <span id="result-ex-en"></span>
           </div>
         </div>
       </article>
 
       <div id="not-found" class="notice" hidden>
         <div class="notice-emoji">🤔</div>
-        <div class="notice-title">Hmm, I don't know that word yet!</div>
-        <div class="notice-sub">Try one of these friends:</div>
+        <div class="notice-title">这个词我还不认识！</div>
+        <div class="notice-sub">试试这些朋友 · Try one of these friends</div>
         <div id="suggestions" class="pills"></div>
       </div>
 
       <div id="service-error" class="notice" hidden>
         <div class="notice-emoji">🛠️</div>
-        <div class="notice-title">The word service is having trouble right now.</div>
-        <div class="notice-sub">Please try again in a moment.<br>查词服务暂时有点问题，请再试一次。</div>
-        <button type="button" id="btn-retry" class="retry">Try again</button>
+        <div class="notice-title">查词服务暂时有点问题。</div>
+        <div class="notice-sub">请再试一次。<br>Please try again in a moment.</div>
+        <button type="button" id="btn-retry" class="retry">再试一次</button>
       </div>
 
       <div id="poke-matches" hidden>
@@ -98,10 +100,10 @@
 
       <div id="home">
         <div class="tabs">
-          <button type="button" id="btn-cat-words" class="tab on">📚 Words</button>
-          <button type="button" id="btn-cat-poke" class="tab">⚡ Pokémon</button>
+          <button type="button" id="btn-cat-words" class="tab on">📚 <span class="tab-zh">单词</span> <span class="tab-en">Words</span></button>
+          <button type="button" id="btn-cat-poke" class="tab">⚡ <span class="tab-zh">宝可梦</span> <span class="tab-en">Pokémon</span></button>
         </div>
-        <div id="home-label" class="home-label">✨ Word friends to explore</div>
+        <div id="home-label" class="home-label">✨ 去认识的单词朋友</div>
         <div id="word-grid" class="chip-grid"></div>
         <div id="poke-wrap">
           <div id="poke-spacer">
@@ -122,7 +124,7 @@
           <button type="button" id="sign-close" class="icon-btn" title="Close" aria-label="Close">✕</button>
         </div>
         <div id="sign-stage" class="sign-stage"></div>
-        <div class="sign-foot">Whole-word sign · video from signasl.org. Not playing? Tap “Open ↗”.</div>
+        <div class="sign-foot">整词手语 · 视频来自 signasl.org。播不了？点「Open ↗」。</div>
       </div>
     </div>
   </div>
