@@ -13,7 +13,6 @@ const $ = (id) => document.getElementById(id);
 
 const ui = {
   q: $('q'),
-  welcome: $('welcome'),
   app: $('app-screen'),
   title: $('app-title'),
   sub: $('app-sub'),
@@ -51,13 +50,16 @@ const ui = {
   signTitle: $('sign-title'),
   signOpen: $('sign-open'),
   signStage: $('sign-stage'),
+  matches: $('poke-matches'),
+  matchLabel: $('match-label'),
+  matchGrid: $('match-grid'),
 };
 
 const state = {
-  screen: 'welcome',
-  mode: 'kid',
+  screen: 'app',
   query: '',
   result: null,
+  matches: [],
   recording: false,
   micLang: 'en',
   notFound: false,
@@ -113,7 +115,9 @@ function normEn(s) {
 function normZh(s) {
   return String(s || '').replace(/\s+/g, '').replace(/[·・.\-－—]/g, '');
 }
-function kid() { return state.mode === 'kid'; }
+function pyKey(s) {
+  return stripTone(s || '').toLowerCase().replace(/\s+/g, '');
+}
 
 function claim() {
   if (timer) { clearTimeout(timer); timer = null; }
@@ -163,6 +167,7 @@ function rebuild() {
       enFlats: [...flats].filter(Boolean),
       zhNames,
       zh: (c && c.zh) || official || '',
+      pinyinFlat: c && c.pinyin ? pyKey(c.pinyin) : '',
     });
   }
   for (const p of curated) {
@@ -175,6 +180,7 @@ function rebuild() {
       enFlats: [normEn(p.en)].filter(Boolean),
       zhNames: p.zh ? [p.zh] : [],
       zh: p.zh || '',
+      pinyinFlat: p.pinyin ? pyKey(p.pinyin) : '',
     });
   }
   dexItems = species.map((s) => ({ id: s.id, enD: s.enD, zh: s.zh, slug: s.slug }));
@@ -184,58 +190,63 @@ function rebuild() {
   pokeKey = '';
 }
 
-function curatedFind(raw) {
+function matchWord(raw) {
   const low = raw.toLowerCase();
-  const flat = (s) => stripTone(s).toLowerCase().replace(/\s+/g, '');
-  const list = words.concat(richCurated);
-  let m = list.find((d) => d.en.toLowerCase() === low || d.zh === raw || flat(d.pinyin) === flat(low));
+  const flat = pyKey(low);
+  let m = words.find((d) => d.en.toLowerCase() === low || d.zh === raw || pyKey(d.pinyin) === flat);
   if (!m) {
-    m = list.find((d) => d.en.toLowerCase().startsWith(low) || (d.zh && d.zh.startsWith(raw)) || (d.pinyin && flat(d.pinyin).startsWith(flat(low))));
+    m = words.find((d) => d.en.toLowerCase().startsWith(low) || (d.zh && d.zh.startsWith(raw)) || (d.pinyin && pyKey(d.pinyin).startsWith(flat)));
   }
   if (!m && low.length >= 2) {
-    m = list.find((d) => d.en.toLowerCase().includes(low) || (d.zh && d.zh.includes(raw)));
+    m = words.find((d) => d.en.toLowerCase().includes(low) || (d.zh && d.zh.includes(raw)));
   }
   return m || null;
 }
 
-function bestSpecies(arr) {
-  return arr.slice().sort((a, b) => a.enD.length - b.enD.length || a.id - b.id)[0];
-}
-
-function matchNational(raw, immediate) {
-  if (!species.length) return null;
+// 0 exact, 1 prefix, 2 contains, -1 none. English ignores spaces and punctuation.
+function pokemonRank(s, raw) {
   const low = raw.toLowerCase();
   const flat = normEn(raw);
   const zh = normZh(raw);
+  const py = pyKey(raw);
   const trimmed = raw.trim();
-  const exact = [];
-  const pref = [];
-  const inc = [];
+  const enExact = (flat && s.enFlats.includes(flat)) || s.enD.toLowerCase() === low || s.slug === low.replace(/\s+/g, '-');
+  const zhExact = !!(zh && s.zhNames.some((n) => normZh(n) === zh));
+  const pyExact = !!(py && s.pinyinFlat && s.pinyinFlat === py);
+  if (enExact || zhExact || pyExact) return 0;
+  const longEnough = flat.length >= 2 || trimmed.length >= 2 || py.length >= 2;
+  if (!longEnough) return -1;
+  const enPref = flat.length >= 2 && (s.enFlats.some((f) => f.startsWith(flat)) || s.enD.toLowerCase().startsWith(low));
+  const zhPref = trimmed.length >= 2 && s.zhNames.some((n) => n.startsWith(trimmed) || normZh(n).startsWith(zh));
+  const pyPref = py.length >= 2 && s.pinyinFlat && s.pinyinFlat.startsWith(py);
+  if (enPref || zhPref || pyPref) return 1;
+  const enInc = (flat.length >= 2 && s.enFlats.some((f) => f.includes(flat))) || (low.length >= 2 && s.enD.toLowerCase().includes(low));
+  const zhInc = trimmed.length >= 2 && s.zhNames.some((n) => n.includes(trimmed) || (zh && normZh(n).includes(zh)));
+  const pyInc = py.length >= 2 && s.pinyinFlat && s.pinyinFlat.includes(py);
+  if (enInc || zhInc || pyInc) return 2;
+  return -1;
+}
+
+function matchPokemonAll(raw) {
+  const hits = [];
   for (const s of species) {
-    const enExact = (flat && s.enFlats.includes(flat)) || s.enD.toLowerCase() === low || s.slug === low.replace(/\s+/g, '-');
-    const zhExact = !!(zh && s.zhNames.some((n) => normZh(n) === zh));
-    if (enExact || zhExact) { exact.push(s); continue; }
-    if (flat.length >= 2 || trimmed.length >= 2) {
-      const enPref = flat.length >= 2 && (s.enFlats.some((f) => f.startsWith(flat)) || s.enD.toLowerCase().startsWith(low));
-      const zhPref = trimmed.length >= 2 && s.zhNames.some((n) => n.startsWith(trimmed) || normZh(n).startsWith(zh));
-      if (enPref || zhPref) { pref.push(s); continue; }
-    }
-    if (low.length >= 2) {
-      const enInc = s.enD.toLowerCase().includes(low) || (flat && s.enFlats.some((f) => f.includes(flat)));
-      const zhInc = trimmed.length >= 2 && s.zhNames.some((n) => n.includes(trimmed));
-      if (enInc || zhInc) inc.push(s);
-    }
+    const rank = pokemonRank(s, raw);
+    if (rank < 0) continue;
+    hits.push({ item: s, rank });
   }
-  if (exact.length) return { hit: bestSpecies(exact) };
-  if (pref.length === 1) return { hit: pref[0] };
-  if (immediate && pref.length) return { hit: bestSpecies(pref) };
-  if (immediate && inc.length) return { hit: bestSpecies(inc) };
-  if (!immediate && pref.length) return { hold: true };
-  return null;
+  hits.sort((a, b) => a.rank - b.rank || a.item.id - b.item.id);
+  return hits.map((h) => ({
+    id: h.item.id,
+    enD: h.item.enD,
+    zh: h.item.zh,
+    slug: h.item.slug,
+    exact: h.rank === 0,
+  }));
 }
 
 function showEntry(entry) {
   state.result = entry;
+  state.matches = [];
   state.looking = false;
   state.notFound = false;
   state.serviceError = false;
@@ -262,6 +273,7 @@ function search(q, immediate) {
   if (!ready) {
     state.looking = !!raw;
     state.result = null;
+    state.matches = [];
     state.notFound = false;
     state.serviceError = false;
     render();
@@ -270,28 +282,31 @@ function search(q, immediate) {
   }
   if (!raw) {
     state.result = null;
+    state.matches = [];
     state.looking = false;
     state.notFound = false;
     state.serviceError = false;
     render();
     return;
   }
-  const curatedHit = curatedFind(raw);
-  if (curatedHit) {
-    showEntry(curatedHit);
+  const wordHit = matchWord(raw);
+  if (wordHit) {
+    showEntry(wordHit);
     return;
   }
-  const poke = matchNational(raw, immediate);
-  if (poke && poke.hit) {
-    presentPokemon(poke.hit, id);
-    return;
-  }
-  if (poke && poke.hold) {
+  const pokeHits = matchPokemonAll(raw);
+  if (pokeHits.length > 1) {
+    state.matches = pokeHits;
     state.result = null;
     state.looking = false;
     state.notFound = false;
     state.serviceError = false;
     render();
+    return;
+  }
+  if (pokeHits.length === 1) {
+    state.matches = [];
+    presentPokemon(pokeHits[0], id);
     return;
   }
   const low = raw.toLowerCase();
@@ -301,6 +316,7 @@ function search(q, immediate) {
   }
   if (!aiAvailable()) {
     state.result = null;
+    state.matches = [];
     state.looking = false;
     state.notFound = true;
     state.serviceError = false;
@@ -309,6 +325,7 @@ function search(q, immediate) {
   }
   state.looking = true;
   state.result = null;
+  state.matches = [];
   state.notFound = false;
   state.serviceError = false;
   render();
@@ -337,6 +354,7 @@ async function lookupPokemon(rec, id) {
   lookupAbort = ac;
   state.looking = true;
   state.result = null;
+  state.matches = [];
   state.notFound = false;
   state.serviceError = false;
   render();
@@ -497,6 +515,7 @@ async function aiLookup(raw, id) {
     } else {
       if (id !== reqId) return;
       state.result = null;
+      state.matches = [];
       state.looking = false;
       state.notFound = true;
       state.serviceError = false;
@@ -506,6 +525,7 @@ async function aiLookup(raw, id) {
     if (e && e.name === 'AbortError') return;
     if (id !== reqId) return;
     state.result = null;
+    state.matches = [];
     state.looking = false;
     state.notFound = false;
     state.serviceError = true;
@@ -518,7 +538,7 @@ function speak(text, lang) {
     if (!text || !window.speechSynthesis) return;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang;
-    u.rate = kid() ? 0.82 : 0.95;
+    u.rate = 0.82;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
   } catch (e) {}
@@ -633,28 +653,6 @@ function closeSign() {
   render();
 }
 
-function chooseMode(mode) {
-  state.screen = 'app';
-  state.mode = mode;
-  render();
-}
-
-function back() {
-  claim();
-  try { if (rec) rec.stop(); } catch (e) {}
-  try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
-  state.screen = 'welcome';
-  state.query = '';
-  state.result = null;
-  state.notFound = false;
-  state.serviceError = false;
-  state.recording = false;
-  state.looking = false;
-  state.micMsg = '';
-  state.signOpen = false;
-  render();
-}
-
 function setCat(cat) {
   state.cat = cat;
   if (cat === 'pokemon') refreshLive();
@@ -686,32 +684,27 @@ function refreshLive() {
 }
 
 function showHome() {
-  return state.screen === 'app' && !state.result && !state.looking && !state.notFound && !state.serviceError;
+  return state.screen === 'app' && !state.result && !state.looking && !state.notFound && !state.serviceError && !(state.matches && state.matches.length);
 }
 
 function homeLabel() {
-  if (state.cat !== 'pokemon') return kid() ? '✨ Word friends to explore' : 'Common words';
+  if (state.cat !== 'pokemon') return '✨ Word friends to explore';
   const baseCount = (liveList && liveList.length) || (pokedex && pokedex.length) || 0;
   if (!baseCount) {
-    if (state.pokeErr) return kid() ? '⚡ Pokémon (离线名单)' : 'Pokémon (offline list)';
-    return kid() ? '⚡ Loading all Pokémon… ✨' : 'Loading Pokémon…';
+    if (state.pokeErr) return '⚡ Pokémon (离线名单)';
+    return '⚡ Loading all Pokémon… ✨';
   }
-  return kid() ? ('⚡ ' + baseCount + ' 只宝可梦 — tap one!') : ('Pokémon · ' + baseCount);
+  return '⚡ ' + baseCount + ' 只宝可梦 — tap one!';
 }
 
 function render() {
-  document.body.dataset.theme = state.mode;
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', kid() ? '#ffe1ec' : '#f3f4f6');
-
-  ui.welcome.hidden = state.screen !== 'welcome';
-  ui.app.hidden = state.screen !== 'app';
+  document.body.dataset.theme = 'kid';
 
   if (ui.q.value !== state.query) ui.q.value = state.query;
-  ui.q.placeholder = kid() ? 'Type a word, press Enter' : 'English or 中文, press Enter';
-  ui.title.textContent = kid() ? 'Learn Your Words' : 'Dictionary';
-  ui.sub.textContent = kid() ? 'Tap a friend or search!' : 'English · 中文';
-  ui.emoji.textContent = kid() ? '🐾' : '📚';
+  ui.q.placeholder = 'Type a word, press Enter';
+  ui.title.textContent = 'Learn Your Words';
+  ui.sub.textContent = 'Tap a friend or search!';
+  ui.emoji.textContent = '🐾';
 
   ui.mic.classList.toggle('rec', state.recording);
   ui.micEn.classList.toggle('on', state.micLang === 'en');
@@ -726,6 +719,7 @@ function render() {
 
   renderResult();
   renderSign();
+  renderMatches();
 
   const home = showHome();
   ui.home.hidden = !home;
@@ -830,6 +824,25 @@ function renderSign() {
   ui.signStage.append(frame);
 }
 
+let matchKey = '';
+function renderMatches() {
+  const list = state.matches || [];
+  ui.matches.hidden = !list.length;
+  if (!list.length) {
+    if (matchKey) ui.matchGrid.replaceChildren();
+    matchKey = '';
+    return;
+  }
+  const n = list.length;
+  ui.matchLabel.textContent = '找到 ' + n + ' 只 — tap one!';
+  const key = list.map((s) => s.id + (s.exact ? '!' : '')).join(',');
+  if (key === matchKey) return;
+  matchKey = key;
+  const frag = document.createDocumentFragment();
+  for (const item of list) frag.append(pokeChip(item));
+  ui.matchGrid.replaceChildren(frag);
+}
+
 function wordChip(w, pill) {
   const b = document.createElement('button');
   b.type = 'button';
@@ -919,7 +932,7 @@ function layoutPoke() {
 function pokeChip(item) {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'poke-chip';
+  b.className = 'poke-chip' + (item.exact ? ' is-exact' : '');
   b.title = item.enD + (item.zh ? ' · ' + item.zh : '');
   const img = document.createElement('img');
   img.src = spriteUrl(item.id);
@@ -939,6 +952,10 @@ function pokeChip(item) {
 }
 
 function loadCache() {
+  try {
+    localStorage.removeItem('lyw_mode');
+    localStorage.removeItem('lyw_theme');
+  } catch (e) {}
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -981,9 +998,6 @@ function onScroll() {
 }
 
 function bind() {
-  $('btn-kid').addEventListener('click', () => chooseMode('kid'));
-  $('btn-adult').addEventListener('click', () => chooseMode('adult'));
-  $('btn-back').addEventListener('click', back);
   ui.q.addEventListener('input', () => { state.query = ui.q.value; search(state.query, false); });
   ui.q.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); search(state.query, true); }

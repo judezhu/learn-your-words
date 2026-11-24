@@ -10,32 +10,8 @@
 </head>
 <body data-theme="kid">
   <main class="shell">
-    <section id="welcome">
-      <div class="panda" aria-hidden="true">🐼</div>
-      <h1>Learn Your Words</h1>
-      <div class="welcome-zh">词语朋友</div>
-      <p class="welcome-q">Who's learning today?</p>
-
-      <button type="button" id="btn-kid" class="choice choice-kid">
-        <span class="choice-emoji" aria-hidden="true">😄</span>
-        <span class="choice-text">
-          <span class="choice-title">I'm a Kid!</span>
-          <span class="choice-sub">Fun, colorful &amp; cuddly</span>
-        </span>
-      </button>
-
-      <button type="button" id="btn-adult" class="choice choice-adult">
-        <span class="choice-emoji" aria-hidden="true">📖</span>
-        <span class="choice-text">
-          <span class="choice-title choice-title-adult">I'm a Grown-up</span>
-          <span class="choice-sub choice-sub-muted">Clean &amp; simple dictionary</span>
-        </span>
-      </button>
-    </section>
-
-    <section id="app-screen" hidden>
+    <section id="app-screen">
       <header class="top">
-        <button type="button" id="btn-back" class="icon-btn" title="Back" aria-label="Back">‹</button>
         <div class="top-text">
           <div id="app-title" class="app-title">Learn Your Words</div>
           <div id="app-sub" class="app-sub">Tap a friend or search!</div>
@@ -110,6 +86,11 @@
         <div class="notice-title">The word service is having trouble right now.</div>
         <div class="notice-sub">Please try again in a moment.<br>查词服务暂时有点问题，请再试一次。</div>
         <button type="button" id="btn-retry" class="retry">Try again</button>
+      </div>
+
+      <div id="poke-matches" hidden>
+        <div id="match-label" class="match-label"></div>
+        <div id="match-grid" class="chip-grid"></div>
       </div>
 
       <div id="home">
