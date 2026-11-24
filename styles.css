@@ -170,6 +170,26 @@ img { max-width: 100%; }
   min-width: 0;
   font-weight: 500;
 }
+.search input::-webkit-search-cancel-button,
+.search input::-webkit-search-decoration,
+.search input::-webkit-search-results-button,
+.search input::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+.clear {
+  cursor: pointer;
+  border: none;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--btn-radius);
+  background: var(--chip);
+  color: var(--sub);
+  font-size: 20px;
+  line-height: 1;
+}
 .mic {
   cursor: pointer;
   border: none;

@@ -14,6 +14,7 @@ const $ = (id) => document.getElementById(id);
 
 const ui = {
   q: $('q'),
+  clear: $('btn-clear'),
   app: $('app-screen'),
   title: $('app-title'),
   sub: $('app-sub'),
@@ -535,15 +536,29 @@ async function aiLookup(raw, id) {
   }
 }
 
+function stopSpeech() {
+  try {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  } catch (e) {}
+}
+
 function speak(text, lang) {
   try {
     if (!text || !window.speechSynthesis) return;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang;
     u.rate = 0.82;
-    window.speechSynthesis.cancel();
+    stopSpeech();
     window.speechSynthesis.speak(u);
   } catch (e) {}
+}
+
+function clearSearch() {
+  stopSpeech();
+  if (state.signOpen) closeSign();
+  state.query = '';
+  search('', false);
+  try { ui.q.focus(); } catch (e) {}
 }
 
 function micErrMsg(code) {
@@ -713,6 +728,7 @@ function render() {
   document.body.dataset.theme = 'kid';
 
   if (ui.q.value !== state.query) ui.q.value = state.query;
+  ui.clear.hidden = !state.query;
   ui.q.placeholder = 'Type a word, press Enter';
   ui.title.textContent = 'Learn Your Words';
   ui.sub.textContent = 'Tap a friend or search!';
@@ -1216,6 +1232,8 @@ function bind() {
   ui.q.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); search(state.query, true); }
   });
+  ui.clear.addEventListener('mousedown', (e) => e.preventDefault());
+  ui.clear.addEventListener('click', clearSearch);
   ui.mic.addEventListener('click', toggleMic);
   ui.micEn.addEventListener('click', () => { state.micLang = 'en'; render(); });
   ui.micZh.addEventListener('click', () => { state.micLang = 'zh'; render(); });
@@ -1230,7 +1248,13 @@ function bind() {
   $('sign-backdrop').addEventListener('click', closeSign);
   $('sign-panel').addEventListener('click', (e) => e.stopPropagation());
   $('sign-close').addEventListener('click', closeSign);
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.signOpen) closeSign(); });
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (state.signOpen) { closeSign(); return; }
+    if (!state.query) return;
+    e.preventDefault();
+    clearSearch();
+  });
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', onScroll);
 }
