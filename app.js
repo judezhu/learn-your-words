@@ -24,6 +24,8 @@ const ui = {
   micZh: $('btn-mic-zh'),
   listen: $('mic-listen'),
   micMsg: $('mic-msg'),
+  micText: $('mic-msg-text'),
+  micRetry: $('btn-mic-retry'),
   looking: $('looking'),
   result: $('result'),
   badge: $('result-badge'),
@@ -70,6 +72,8 @@ const state = {
   cat: 'pokemon',
   looking: false,
   micMsg: '',
+  micOk: true,
+  micRetry: false,
   pokeErr: false,
   signOpen: false,
   signVideo: null,
@@ -94,6 +98,13 @@ let lookupAbort = null;
 let signReq = 0;
 let signKey = '';
 let rec = null;
+let voiceIndex = null;
+let micSilence = 0;
+let micGot = false;
+let micUserStop = false;
+let micErrored = false;
+let micSilent = false;
+let micClosed = false;
 let livePromise = null;
 let resultKey = '';
 let pokeKey = '';
@@ -206,6 +217,19 @@ function rebuild() {
     });
   }
   dexItems = species.map((s) => ({ id: s.id, enD: s.enD, zh: s.zh, slug: s.slug }));
+  if (typeof VoiceMatch !== 'undefined') {
+    voiceIndex = VoiceMatch.prepare(words, species.map((s) => {
+      const c = curatedById.get(s.id);
+      return {
+        id: s.id,
+        enD: s.enD,
+        zh: s.zh,
+        zhNames: s.zhNames,
+        pinyin: (c && c.pinyin) || '',
+        slug: s.slug,
+      };
+    }));
+  }
   dexGen++;
   wordKey = '';
   suggestKey = '';
@@ -574,6 +598,7 @@ function speak(text, lang) {
 }
 
 function clearSearch() {
+  stopMic(true);
   stopSpeech();
   if (state.signOpen) closeSign();
   state.query = '';
@@ -581,63 +606,199 @@ function clearSearch() {
   try { ui.q.focus(); } catch (e) {}
 }
 
+function micSupported() {
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+const MIC_UNAVAILABLE = '这个窗口不能听你说。请用键盘上的麦克风来打字。';
+
 function micErrMsg(code) {
   switch (code) {
     case 'not-allowed':
     case 'service-not-allowed':
-      return '🎤 需要麦克风权限。请在浏览器地址栏/设置里允许麦克风，iPhone/iPad 还要打开「设置 → 通用 → 键盘 → 启用听写」。';
+      return '麦克风还没打开。请让大人允许麦克风，或用键盘上的麦克风来说。';
     case 'no-speech':
-      return '没听清，再试一次，靠近麦克风说一个词 🙂';
+      return '没听清，再说一次';
     case 'audio-capture':
-      return '找不到麦克风，请检查设备麦克风。';
+      return '找不到麦克风。可以用键盘上的麦克风来说。';
     case 'network':
-      return '语音识别需要联网，请检查网络连接。';
+      return '要联网才能听。请检查网络，或改用键盘。';
     case 'aborted':
-      return '';
+      return '没听清，再说一次';
     default:
-      return '语音识别暂时用不了，可以直接打字 😊';
+      return '这次没听成。再说一次，或者打字也行。';
   }
 }
 
-function toggleMic() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    state.micMsg = '这个浏览器不支持语音搜索 — 可以直接打字 😊（建议用 Safari 或 Chrome 浏览器打开，不要用「添加到主屏幕」的图标）';
-    render();
-    return;
+function noteMicSupport() {
+  state.micOk = micSupported();
+  if (!state.micOk) {
+    state.micMsg = MIC_UNAVAILABLE;
+    state.micRetry = false;
   }
-  if (state.recording && rec) {
-    try { rec.stop(); } catch (e) {}
-    return;
-  }
-  try { rec = new SR(); } catch (e) {
-    state.micMsg = '无法启动语音识别。';
-    render();
-    return;
-  }
-  rec.lang = state.micLang === 'zh' ? 'zh-CN' : 'en-US';
-  rec.interimResults = false;
-  rec.maxAlternatives = 1;
-  rec.onresult = (e) => {
-    const t = (e.results[0][0].transcript || '').replace(/[.。,，!！?？\s]+$/, '').trim();
-    state.query = t;
-    state.micMsg = '';
-    search(t, true);
-  };
-  rec.onend = () => { state.recording = false; render(); };
-  rec.onerror = (e) => {
+}
+
+function armMicSilence() {
+  if (micSilence) clearTimeout(micSilence);
+  micSilence = setTimeout(() => {
+    micSilence = 0;
+    if (state.recording) stopMic(false);
+  }, 5000);
+}
+
+function stopMic(silent) {
+  micUserStop = true;
+  micSilent = !!silent;
+  if (micSilence) { clearTimeout(micSilence); micSilence = 0; }
+  const cur = rec;
+  if (!cur) {
     state.recording = false;
-    state.micMsg = micErrMsg(e && e.error);
+    return;
+  }
+  try {
+    if (silent) cur.abort();
+    else cur.stop();
+  } catch (e) {}
+}
+
+function applyVoice(alts) {
+  const id = claim();
+  const heard = (typeof VoiceMatch !== 'undefined' && VoiceMatch.cleanHeard(alts[0] || '')) || String(alts[0] || '').trim();
+  if (!voiceIndex || typeof VoiceMatch === 'undefined') {
+    state.query = heard;
+    state.looking = !!heard;
+    state.result = null;
+    state.matches = [];
+    render();
+    readyPromise.then(() => { if (id === reqId) applyVoice(alts); });
+    return;
+  }
+  const result = VoiceMatch.match(alts, voiceIndex);
+  state.micMsg = '';
+  state.micRetry = false;
+  if (result.status === 'none') {
+    state.query = result.heard || heard;
+    state.result = null;
+    state.matches = [];
+    state.looking = false;
+    state.notFound = false;
+    state.serviceError = false;
+    state.micMsg = (result.heard ? '听到「' + result.heard + '」。' : '') + '没听清，再说一次';
+    state.micRetry = true;
+    render();
+    return;
+  }
+  if (result.status === 'many') {
+    state.query = result.heard || heard;
+    state.result = null;
+    state.matches = result.hits;
+    state.looking = false;
+    state.notFound = false;
+    state.serviceError = false;
+    render();
+    return;
+  }
+  const hit = result.hits[0];
+  state.query = hit.zh || hit.en || hit.enD || result.heard;
+  if (hit.kind === 'word') showEntry(hit.word);
+  else presentPokemon(hit, id);
+}
+
+function startMic() {
+  if (!state.micOk) {
+    state.micMsg = MIC_UNAVAILABLE;
+    state.micRetry = false;
+    render();
+    return;
+  }
+  if (state.recording) {
+    stopMic(false);
+    return;
+  }
+  stopSpeech();
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let next;
+  try { next = new SR(); } catch (e) {
+    state.micMsg = '语音暂时开不了。请用键盘上的麦克风来打字。';
+    state.micRetry = false;
+    render();
+    return;
+  }
+  micGot = false;
+  micUserStop = false;
+  micErrored = false;
+  micSilent = false;
+  micClosed = false;
+  next.lang = state.micLang === 'zh' ? 'zh-CN' : 'en-US';
+  next.continuous = false;
+  next.interimResults = true;
+  next.maxAlternatives = 5;
+  next.onresult = (e) => {
+    if (micSilent || micClosed || micGot) return;
+    const list = e.results;
+    if (!list || !list.length) return;
+    const last = list[list.length - 1];
+    const texts = [];
+    for (let i = 0; i < last.length; i++) texts.push(last[i].transcript || '');
+    const live = String(texts[0] || '').trim();
+    if (live) {
+      state.query = typeof VoiceMatch !== 'undefined' ? VoiceMatch.cleanHeard(live) : live;
+      armMicSilence();
+    }
+    if (last.isFinal) {
+      micGot = true;
+      if (micSilence) { clearTimeout(micSilence); micSilence = 0; }
+      state.recording = false;
+      applyVoice(texts);
+      return;
+    }
     render();
   };
+  next.onerror = (e) => {
+    const code = e && e.error;
+    if (code === 'aborted' && micUserStop) return;
+    if (micSilent) return;
+    micErrored = true;
+    state.recording = false;
+    state.micMsg = micErrMsg(code);
+    state.micRetry = code === 'no-speech' || code === 'aborted' || code === 'network';
+    render();
+  };
+  next.onend = () => {
+    if (micClosed) return;
+    micClosed = true;
+    if (micSilence) { clearTimeout(micSilence); micSilence = 0; }
+    state.recording = false;
+    rec = null;
+    if (micGot || micErrored || micSilent) {
+      render();
+      return;
+    }
+    if (micUserStop && state.query) {
+      applyVoice([state.query]);
+      return;
+    }
+    state.micMsg = '没听清，再说一次';
+    state.micRetry = true;
+    render();
+  };
+  rec = next;
   state.recording = true;
   state.micMsg = '';
-  render();
-  try { rec.start(); } catch (e) {
+  state.micRetry = false;
+  try {
+    next.start();
+  } catch (e) {
+    rec = null;
     state.recording = false;
-    state.micMsg = '无法启动语音识别，请直接打字 😊';
+    state.micMsg = '语音暂时开不了。请用键盘上的麦克风来打字。';
+    state.micRetry = false;
     render();
+    return;
   }
+  if (!state.recording) return;
+  armMicSilence();
+  render();
 }
 
 function isPokemonResult(r) {
@@ -755,11 +916,16 @@ function render() {
   ui.emoji.textContent = '🐾';
 
   ui.mic.classList.toggle('rec', state.recording);
+  ui.mic.classList.toggle('is-off', state.micOk === false);
+  ui.mic.textContent = state.recording ? '⏹' : '🎤';
+  ui.mic.setAttribute('aria-pressed', state.recording ? 'true' : 'false');
+  ui.mic.setAttribute('aria-label', state.recording ? '停止' : (state.micOk === false ? '不能听' : '说话'));
   ui.micEn.classList.toggle('on', state.micLang === 'en');
   ui.micZh.classList.toggle('on', state.micLang === 'zh');
   ui.listen.hidden = !state.recording;
+  ui.micText.textContent = state.micMsg || '';
+  ui.micRetry.hidden = !state.micRetry || state.recording;
   ui.micMsg.hidden = !state.micMsg;
-  ui.micMsg.textContent = state.micMsg || '';
 
   ui.looking.hidden = !state.looking;
   ui.notFound.hidden = !state.notFound;
@@ -1390,12 +1556,16 @@ function renderMatches() {
     return;
   }
   const n = list.length;
-  ui.matchLabel.textContent = '找到 ' + n + ' 只 — 点一只！';
-  const key = list.map((s) => s.id + (s.exact ? '!' : '')).join(',');
+  const allPoke = list.every((s) => s.kind !== 'word');
+  ui.matchLabel.textContent = allPoke ? ('找到 ' + n + ' 只 — 点一只！') : ('找到 ' + n + ' 个 — 点一个！');
+  const key = list.map((s) => (s.key || s.id) + (s.exact ? '!' : '')).join(',');
   if (key === matchKey) return;
   matchKey = key;
   const frag = document.createDocumentFragment();
-  for (const item of list) frag.append(pokeChip(item, true));
+  for (const item of list) {
+    if (item.kind === 'word' && item.word) frag.append(wordChip(item.word, false));
+    else frag.append(pokeChip(item, true));
+  }
   ui.matchGrid.replaceChildren(frag);
 }
 
@@ -1558,15 +1728,28 @@ function onScroll() {
 }
 
 function bind() {
-  ui.q.addEventListener('input', () => { state.query = ui.q.value; search(state.query, false); });
+  ui.q.addEventListener('input', () => {
+    if (state.recording) stopMic(true);
+    state.query = ui.q.value;
+    search(state.query, false);
+  });
   ui.q.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); search(state.query, true); }
   });
   ui.clear.addEventListener('mousedown', (e) => e.preventDefault());
   ui.clear.addEventListener('click', clearSearch);
-  ui.mic.addEventListener('click', toggleMic);
-  ui.micEn.addEventListener('click', () => { state.micLang = 'en'; render(); });
-  ui.micZh.addEventListener('click', () => { state.micLang = 'zh'; render(); });
+  ui.mic.addEventListener('click', startMic);
+  ui.micRetry.addEventListener('click', startMic);
+  ui.micEn.addEventListener('click', () => {
+    state.micLang = 'en';
+    if (state.recording) stopMic(true);
+    render();
+  });
+  ui.micZh.addEventListener('click', () => {
+    state.micLang = 'zh';
+    if (state.recording) stopMic(true);
+    render();
+  });
   $('speak-en').addEventListener('click', () => state.result && speak(state.result.en, 'en-US'));
   $('speak-zh').addEventListener('click', () => state.result && speak(state.result.zh, 'zh-CN'));
   $('speak-ex-en').addEventListener('click', () => state.result && speak(state.result.exEn, 'en-US'));
@@ -1592,6 +1775,7 @@ function bind() {
 
 loadCache();
 bind();
+noteMicSupport();
 if (state.cat === 'pokemon') {
   refreshLive();
   ensureEvo();

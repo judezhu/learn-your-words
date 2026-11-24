@@ -202,6 +202,10 @@ img { max-width: 100%; }
   font-size: 21px;
 }
 .mic.rec { animation: wf-pulse 1.4s infinite; background: #ff3b5c; }
+.mic.is-off { opacity: 0.55; }
+@media (prefers-reduced-motion: reduce) {
+  .mic.rec { animation: none; }
+}
 
 .mic-langs {
   display: flex;
@@ -239,6 +243,8 @@ img { max-width: 100%; }
   line-height: 1.5;
   font-weight: 500;
 }
+.mic-msg p { margin: 0; }
+.mic-msg .retry { display: inline-block; margin-top: 8px; }
 
 .looking { margin-top: 30px; text-align: center; }
 .spinner {
