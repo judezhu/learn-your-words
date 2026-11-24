@@ -780,6 +780,132 @@ function render() {
   layoutPoke();
 }
 
+const MODEL_BASE = 'https://cdn.jsdelivr.net/gh/Pokemon-3D-api/assets@main/models/opt/';
+const MODEL_BIG = 3 * 1024 * 1024;
+let modelMap = null;
+let modelPromise = null;
+let viewerPromise = null;
+
+function ensureModels() {
+  if (modelMap) return Promise.resolve(modelMap);
+  if (!modelPromise) {
+    modelPromise = loadJson('models3d.json').then((d) => {
+      modelMap = d || {};
+      return modelMap;
+    }).catch((e) => {
+      console.error(e);
+      modelPromise = null;
+      return null;
+    });
+  }
+  return modelPromise;
+}
+
+function ensureViewer() {
+  if (!viewerPromise) {
+    viewerPromise = import('https://cdn.jsdelivr.net/npm/@google/model-viewer@4.4.0/dist/model-viewer.min.js').then((mod) => {
+      const El = mod.ModelViewerElement;
+      if (El) El.dracoDecoderLocation = 'https://www.gstatic.com/draco/versioned/decoders/1.5.7/';
+      return El;
+    }).catch((e) => {
+      viewerPromise = null;
+      throw e;
+    });
+  }
+  return viewerPromise;
+}
+
+function formatModelSize(bytes) {
+  const mb = bytes / (1024 * 1024);
+  return (mb >= 10 ? String(Math.round(mb)) : mb.toFixed(1)) + ' MB';
+}
+
+function attachModel(stage, tilt, id, poster) {
+  ensureModels().then((map) => {
+    if (!state.result || state.result.id !== id || !stage.isConnected) return;
+    const row = map && map[String(id)];
+    if (!row) return;
+    const path = row[0];
+    const bytes = row[1] || 0;
+    const big = bytes >= MODEL_BIG;
+    const tools = document.createElement('div');
+    tools.className = 'art-tools';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'art-tool';
+    toggle.textContent = '立体';
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.className = 'art-tool';
+    loadBtn.textContent = '看立体 · ' + formatModelSize(bytes);
+    let mv = null;
+
+    function show2d() {
+      tilt.hidden = false;
+      if (mv) mv.hidden = true;
+      toggle.textContent = '立体';
+      loadBtn.hidden = true;
+    }
+    function fail() {
+      if (mv) mv.remove();
+      mv = null;
+      show2d();
+      tools.remove();
+    }
+    function start3d() {
+      loadBtn.hidden = true;
+      toggle.hidden = false;
+      toggle.textContent = '图片';
+      ensureViewer().then(() => {
+        if (!state.result || state.result.id !== id || !stage.isConnected) return;
+        if (!mv) {
+          mv = document.createElement('model-viewer');
+          mv.className = 'art-model';
+          mv.alt = '';
+          mv.poster = poster || '';
+          mv.cameraControls = true;
+          mv.touchAction = 'pan-y';
+          mv.interactionPrompt = 'none';
+          mv.shadowIntensity = 0.55;
+          if (!motionReduced()) {
+            mv.autoRotate = true;
+            mv.autoRotateDelay = 0;
+          }
+          mv.addEventListener('pointerdown', () => { mv.autoRotate = false; });
+          mv.addEventListener('load', () => {
+            const names = mv.availableAnimations || [];
+            if (!names.length) return;
+            const idle = names.find((n) => /idle|stand|wait|breath/i.test(n));
+            mv.animationName = idle || names[0];
+            if (!motionReduced()) {
+              try { mv.play(); } catch (e) {}
+            }
+          });
+          mv.addEventListener('error', fail);
+          stage.insertAdjacentElement('afterend', mv);
+        }
+        if (!mv.src) mv.src = MODEL_BASE + path;
+        mv.hidden = false;
+        tilt.hidden = true;
+      }).catch(fail);
+    }
+    toggle.addEventListener('click', () => {
+      if (mv && !mv.hidden) show2d();
+      else start3d();
+    });
+    loadBtn.addEventListener('click', start3d);
+    tools.append(toggle, loadBtn);
+    ui.art.append(tools);
+    if (big) {
+      toggle.hidden = true;
+      loadBtn.hidden = false;
+    } else {
+      loadBtn.hidden = true;
+      start3d();
+    }
+  });
+}
+
 function motionReduced() {
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
@@ -879,6 +1005,7 @@ function renderResult() {
       stage.append(tilt);
       ui.art.append(stage);
       bindArtTilt(stage, tilt);
+      attachModel(stage, tilt, r.id, img.src);
     } else {
       ui.art.append(img);
     }

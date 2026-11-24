@@ -286,6 +286,33 @@ img { max-width: 100%; }
   perspective: 720px;
   touch-action: pan-y;
 }
+.art-model {
+  width: 220px;
+  height: 220px;
+  margin: 0 auto;
+  background: transparent;
+  --poster-color: transparent;
+  --progress-bar-height: 0px;
+  --progress-bar-color: transparent;
+  touch-action: pan-y;
+}
+.art-tools {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.art-tool {
+  cursor: pointer;
+  border: none;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 12px;
+  min-height: 36px;
+}
 .art-tilt {
   position: relative;
   display: inline-block;

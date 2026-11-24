@@ -17,6 +17,7 @@ The site is static files. [Cloudflare Pages](https://learn-your-words.pages.dev)
 | `pokemon.json` | Curated Pokémon (English, 中文, pinyin). Edit this for the names you want to show with a ready-made pinyin. |
 | `evolutions.json` | Evolution chains for the Pokémon cards. Pokémon ids only, built by `scripts/build_pokemon.py`, loaded when a card opens. |
 | `home.json` | Pokémon ids with no HOME 3D picture. Every other id uses the HOME render. |
+| `models3d.json` | Which Pokémon have a rotatable 3D model, the file path, and its size. Loaded when a card opens. |
 | `pokedex.json` | All 1,025 national-dex Pokémon: PokéAPI slug + official Simplified Chinese. Search uses this so names outside `pokemon.json` still open a Pokémon card. |
 | `fonts/` | Fredoka, latin and latin-ext only (for pinyin tone marks). Chinese text uses the phone or computer's own font. |
 | `functions/api/lookup.js` | AI lookup. The Anthropic key stays in the `ANTHROPIC_KEY` secret. |
@@ -70,6 +71,7 @@ Rebuild it (needs network the first time) with:
 python3 scripts/build_pokemon.py
 python3 scripts/build_pokemon.py --evolutions
 python3 scripts/build_pokemon.py --home
+python3 scripts/build_pokemon.py --models
 ```
 
 The script reads PokéAPI's CSVs. It keeps hand-written names and pinyin from `master`'s `pokemon.json` unless a name is clearly out of date. New pinyin comes from pypinyin. 52poke is the preferred check for mainland names; the script falls back to PokéAPI zh-Hans when that wiki cannot be fetched. Forms that reuse the base artwork (totems, size variants, and similar) are skipped and listed.
@@ -83,6 +85,10 @@ The same run writes `evolutions.json`. Chains come from `pokemon_species.csv` (`
 `--home` writes `home.json`. That file is only the ids in `pokemon.json` that have no picture in PokeAPI's `sprites/pokemon/other/home/` folder. Cards, search thumbnails, and the evolution row use the HOME 3D render for every other id, and fall back to the official artwork if a HOME file is missing. The big card picture also tilts with a finger or the mouse, and sits still when the device asks for less motion.
 
 `--home` 会写出 `home.json`。里面只放 `pokemon.json` 中、在 PokéAPI 的 `sprites/pokemon/other/home/` 没有图的编号。卡片、搜索小图和进化链上的其他宝可梦用 HOME 的立体图；如果那张图打不开，就改用原来的官方图。大图还可以跟着手指或鼠标轻轻转一转；系统开了「减少动态效果」时它就不动。
+
+`--models` writes `models3d.json` from the fan-made GLB files in [Pokemon-3D-api/assets](https://github.com/Pokemon-3D-api/assets) (`models/opt/`). The page does not copy those files. A Pokémon card loads `<model-viewer>` only when it opens, shows the HOME picture while the model downloads, and keeps that picture when there is no model. Files about 3 MB or larger wait for a tap. These models are fan-made extracts of Nintendo IP, for private use only.
+
+`--models` 会写出 `models3d.json`，数据来自爱好者整理的 [Pokemon-3D-api/assets](https://github.com/Pokemon-3D-api/assets)（`models/opt/`）。页面不把模型文件拷进仓库。打开宝可梦卡片时才加载可以转的立体模型，下载时先显示 HOME 图片；没有模型就一直用那张图。大约 3 MB 以上的文件要先点一下才下载。这些模型是粉丝从任天堂作品中提取的，仅供个人使用。
 
 Searching checks this file and `pokedex.json` (English, ignoring spaces and punctuation, and Simplified Chinese). One match opens that card. Several matches — `pikachu`, `皮卡丘`, `charizard`, `喷火龙` — show every form as a tappable sprite, with an exact name highlighted first. A normal word such as `cat` still opens the word card. `pokedex.json` is only the English slug index for the live dex; refresh it after a new generation with:
 
