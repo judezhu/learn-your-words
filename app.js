@@ -533,15 +533,118 @@ async function aiLookup(raw, id) {
   }
 }
 
-function speak(text, lang) {
+// iOS Safari only starts speechSynthesis inside the tap that called it.
+// Do not await voices, and do not defer speak() with a timer.
+let audioCtx = null;
+let voicesReady = false;
+
+function normLang(lang) {
+  return String(lang || '').toLowerCase().replace(/_/g, '-');
+}
+
+function pickVoice(lang) {
+  const synth = window.speechSynthesis;
+  if (!synth || !lang) return null;
+  let voices = [];
+  try { voices = synth.getVoices() || []; } catch (e) { return null; }
+  const want = normLang(lang);
+  const prefix = want.split('-')[0];
+  if (!prefix) return null;
+  const matches = (v) => {
+    const l = normLang(v && v.lang);
+    return l === want || l === prefix || l.startsWith(prefix + '-');
+  };
+  return voices.find((v) => normLang(v.lang) === want) || voices.find(matches) || null;
+}
+
+function unlockAudio() {
   try {
-    if (!text || !window.speechSynthesis) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang;
-    u.rate = 0.82;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) {
+      if (!audioCtx) audioCtx = new Ctx();
+      if (audioCtx.state === 'suspended') {
+        const resumed = audioCtx.resume();
+        if (resumed && typeof resumed.catch === 'function') resumed.catch(() => {});
+      }
+      const buf = audioCtx.createBuffer(1, 1, 22050);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(audioCtx.destination);
+      src.start(0);
+    }
   } catch (e) {}
+  try {
+    if (window.speechSynthesis && window.speechSynthesis.paused) window.speechSynthesis.resume();
+  } catch (e) {}
+}
+
+function installVoices() {
+  const synth = window.speechSynthesis;
+  if (!synth || voicesReady) return;
+  voicesReady = true;
+  const refresh = () => { try { synth.getVoices(); } catch (e) {} };
+  try { synth.addEventListener('voiceschanged', refresh); } catch (e) {}
+  refresh();
+}
+
+function showSpeakHint() {
+  const el = $('speak-hint');
+  if (el) el.hidden = false;
+}
+
+function markSpeaking(btn) {
+  document.querySelectorAll('.speak.is-speaking').forEach((el) => el.classList.remove('is-speaking'));
+  if (btn) btn.classList.add('is-speaking');
+}
+
+function clearSpeaking(btn) {
+  if (btn) btn.classList.remove('is-speaking');
+}
+
+function speak(text, lang, btn) {
+  const synth = window.speechSynthesis;
+  if (!text || !synth || typeof SpeechSynthesisUtterance === 'undefined') {
+    showSpeakHint();
+    return;
+  }
+  // Stay inside this tap: unlock and speak before any await.
+  unlockAudio();
+  const u = new SpeechSynthesisUtterance(String(text));
+  u.lang = lang || '';
+  u.rate = 0.82;
+  const voice = pickVoice(lang);
+  if (voice) u.voice = voice;
+  markSpeaking(btn);
+  let started = false;
+  u.onstart = () => {
+    started = true;
+    try { if (synth.paused) synth.resume(); } catch (e) {}
+  };
+  u.onend = () => clearSpeaking(btn);
+  u.onerror = (ev) => {
+    clearSpeaking(btn);
+    const err = ev && ev.error;
+    if (err && err !== 'interrupted' && err !== 'canceled') showSpeakHint();
+  };
+  try {
+    // First tap: do not cancel(), iOS drops the utterance queued after it.
+    // Later taps: cancel the previous one, then resume so the engine is not stuck paused.
+    if (synth.paused) synth.resume();
+    if (synth.speaking || synth.pending) {
+      synth.cancel();
+      if (synth.paused) synth.resume();
+    }
+    synth.resume();
+    synth.speak(u);
+    if (synth.paused) synth.resume();
+  } catch (e) {
+    clearSpeaking(btn);
+    showSpeakHint();
+    return;
+  }
+  window.setTimeout(() => {
+    if (!started && !synth.speaking && !synth.pending) showSpeakHint();
+  }, 700);
 }
 
 function micErrMsg(code) {
@@ -742,9 +845,16 @@ function renderResult() {
   const r = state.result;
   const key = r ? [r.enD, r.zh, r.pinyin, r.img || '', r.emoji || '', r.ai ? 1 : 0, r.exEn || '', r.exZh || ''].join('\n') : '';
   ui.result.hidden = !r;
-  if (!r) { resultKey = ''; return; }
+  if (!r) {
+    resultKey = '';
+    const hint = $('speak-hint');
+    if (hint) hint.hidden = true;
+    return;
+  }
   if (key === resultKey) return;
   resultKey = key;
+  const hint = $('speak-hint');
+  if (hint) hint.hidden = true;
 
   ui.badge.hidden = !r.ai;
   ui.en.textContent = r.enD || r.en || '';
@@ -1019,10 +1129,12 @@ function bind() {
   ui.mic.addEventListener('click', toggleMic);
   ui.micEn.addEventListener('click', () => { state.micLang = 'en'; render(); });
   ui.micZh.addEventListener('click', () => { state.micLang = 'zh'; render(); });
-  $('speak-en').addEventListener('click', () => state.result && speak(state.result.en, 'en-US'));
-  $('speak-zh').addEventListener('click', () => state.result && speak(state.result.zh, 'zh-CN'));
-  $('speak-ex-en').addEventListener('click', () => state.result && speak(state.result.exEn, 'en-US'));
-  $('speak-ex-zh').addEventListener('click', () => state.result && speak(state.result.exZh, 'zh-CN'));
+  $('speak-en').addEventListener('click', (e) => speak(state.result && (state.result.enD || state.result.en), 'en-US', e.currentTarget));
+  $('speak-zh').addEventListener('click', (e) => speak(state.result && state.result.zh, 'zh-CN', e.currentTarget));
+  $('speak-ex-en').addEventListener('click', (e) => speak(state.result && state.result.exEn, 'en-US', e.currentTarget));
+  $('speak-ex-zh').addEventListener('click', (e) => speak(state.result && state.result.exZh, 'zh-CN', e.currentTarget));
+  document.addEventListener('pointerdown', unlockAudio, { capture: true, passive: true });
+  installVoices();
   $('btn-sign').addEventListener('click', openSign);
   $('btn-retry').addEventListener('click', () => search(state.query, true));
   ui.catWords.addEventListener('click', () => setCat('words'));

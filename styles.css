@@ -311,6 +311,19 @@ img { max-width: 100%; }
 .speak-en-soft, .speak-zh-soft { background: var(--chip); }
 .speak-en-soft { color: var(--accent); }
 .speak-zh-soft { color: var(--accent-2); }
+.speak.is-speaking { animation: speak-pop 0.7s ease-in-out infinite; }
+@keyframes speak-pop {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.14); }
+}
+.speak-hint {
+  margin: 16px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--accent);
+}
 
 .sign-row, .examples {
   margin-top: 22px;
