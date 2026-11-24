@@ -97,14 +97,9 @@ let timer = null;
 let lookupAbort = null;
 let signReq = 0;
 let signKey = '';
-let rec = null;
 let voiceIndex = null;
-let micSilence = 0;
-let micGot = false;
-let micUserStop = false;
-let micErrored = false;
-let micSilent = false;
-let micClosed = false;
+let micGen = 0;
+let micSession = null;
 let livePromise = null;
 let resultKey = '';
 let pokeKey = '';
@@ -638,27 +633,80 @@ function noteMicSupport() {
   }
 }
 
-function armMicSilence() {
-  if (micSilence) clearTimeout(micSilence);
-  micSilence = setTimeout(() => {
-    micSilence = 0;
-    if (state.recording) stopMic(false);
+function sessionLive(session) {
+  return !!(session && micSession === session && !session.dead);
+}
+
+function clearMicTimer(session) {
+  if (session && session.timer) {
+    clearTimeout(session.timer);
+    session.timer = 0;
+  }
+}
+
+function armMicSilence(session) {
+  clearMicTimer(session);
+  session.timer = setTimeout(() => {
+    session.timer = 0;
+    if (!sessionLive(session)) return;
+    stopMic(false);
   }, 5000);
 }
 
+// Drop a recognizer so iOS will allow another one. Abort after the handlers
+// are gone, and ignore anything that still arrives for this session id.
+function detachMic(session) {
+  if (!session || session.dead) return;
+  session.dead = true;
+  clearMicTimer(session);
+  const r = session.rec;
+  session.rec = null;
+  if (r) {
+    r.onresult = null;
+    r.onerror = null;
+    r.onend = null;
+    r.onnomatch = null;
+    try { r.abort(); } catch (e) {}
+  }
+  if (micSession === session) {
+    micSession = null;
+    state.recording = false;
+  }
+}
+
 function stopMic(silent) {
-  micUserStop = true;
-  micSilent = !!silent;
-  if (micSilence) { clearTimeout(micSilence); micSilence = 0; }
-  const cur = rec;
-  if (!cur) {
+  const session = micSession;
+  if (!session || session.dead) {
     state.recording = false;
     return;
   }
-  try {
-    if (silent) cur.abort();
-    else cur.stop();
-  } catch (e) {}
+  clearMicTimer(session);
+  if (silent) {
+    detachMic(session);
+    return;
+  }
+  session.userStop = true;
+  const r = session.rec;
+  if (!r) {
+    detachMic(session);
+    return;
+  }
+  try { r.stop(); } catch (e) { detachMic(session); }
+}
+
+function whenMicQuiet(run) {
+  stopSpeech();
+  const synth = window.speechSynthesis;
+  if (!synth || !synth.speaking) {
+    run();
+    return;
+  }
+  const started = Date.now();
+  const tick = () => {
+    if (!synth.speaking || Date.now() - started >= 300) run();
+    else setTimeout(tick, 40);
+  };
+  setTimeout(tick, 40);
 }
 
 function applyVoice(alts) {
@@ -711,30 +759,38 @@ function startMic() {
     render();
     return;
   }
-  if (state.recording) {
+  if (state.recording && micSession && !micSession.dead) {
     stopMic(false);
     return;
   }
-  stopSpeech();
+  if (micSession) detachMic(micSession);
+  const session = { id: ++micGen, rec: null, timer: 0, dead: false, got: false, userStop: false, errored: false };
+  micSession = session;
+  state.recording = true;
+  state.micMsg = '';
+  state.micRetry = false;
+  render();
+  whenMicQuiet(() => beginMic(session));
+}
+
+function beginMic(session) {
+  if (!sessionLive(session)) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let next;
   try { next = new SR(); } catch (e) {
+    detachMic(session);
     state.micMsg = '语音暂时开不了。请用键盘上的麦克风来打字。';
     state.micRetry = false;
     render();
     return;
   }
-  micGot = false;
-  micUserStop = false;
-  micErrored = false;
-  micSilent = false;
-  micClosed = false;
+  session.rec = next;
   next.lang = state.micLang === 'zh' ? 'zh-CN' : 'en-US';
   next.continuous = false;
   next.interimResults = true;
   next.maxAlternatives = 5;
   next.onresult = (e) => {
-    if (micSilent || micClosed || micGot) return;
+    if (!sessionLive(session) || session.got) return;
     const list = e.results;
     if (!list || !list.length) return;
     const last = list[list.length - 1];
@@ -743,38 +799,39 @@ function startMic() {
     const live = String(texts[0] || '').trim();
     if (live) {
       state.query = typeof VoiceMatch !== 'undefined' ? VoiceMatch.cleanHeard(live) : live;
-      armMicSilence();
+      armMicSilence(session);
     }
     if (last.isFinal) {
-      micGot = true;
-      if (micSilence) { clearTimeout(micSilence); micSilence = 0; }
+      session.got = true;
+      clearMicTimer(session);
       state.recording = false;
       applyVoice(texts);
-      return;
+    } else {
+      render();
     }
-    render();
   };
   next.onerror = (e) => {
+    if (!sessionLive(session)) return;
     const code = e && e.error;
-    if (code === 'aborted' && micUserStop) return;
-    if (micSilent) return;
-    micErrored = true;
+    if (code === 'aborted' && session.userStop) return;
+    session.errored = true;
     state.recording = false;
     state.micMsg = micErrMsg(code);
     state.micRetry = code === 'no-speech' || code === 'aborted' || code === 'network';
     render();
   };
   next.onend = () => {
-    if (micClosed) return;
-    micClosed = true;
-    if (micSilence) { clearTimeout(micSilence); micSilence = 0; }
+    if (session.dead || !sessionLive(session)) return;
+    clearMicTimer(session);
     state.recording = false;
-    rec = null;
-    if (micGot || micErrored || micSilent) {
+    micSession = null;
+    session.dead = true;
+    session.rec = null;
+    if (session.got || session.errored) {
       render();
       return;
     }
-    if (micUserStop && state.query) {
+    if (session.userStop && state.query) {
       applyVoice([state.query]);
       return;
     }
@@ -782,22 +839,17 @@ function startMic() {
     state.micRetry = true;
     render();
   };
-  rec = next;
-  state.recording = true;
-  state.micMsg = '';
-  state.micRetry = false;
   try {
     next.start();
   } catch (e) {
-    rec = null;
-    state.recording = false;
+    detachMic(session);
     state.micMsg = '语音暂时开不了。请用键盘上的麦克风来打字。';
     state.micRetry = false;
     render();
     return;
   }
-  if (!state.recording) return;
-  armMicSilence();
+  if (!sessionLive(session) || session.errored || session.got) return;
+  armMicSilence(session);
   render();
 }
 
@@ -1738,6 +1790,7 @@ function bind() {
   });
   ui.clear.addEventListener('mousedown', (e) => e.preventDefault());
   ui.clear.addEventListener('click', clearSearch);
+  ui.mic.addEventListener('pointerdown', () => { stopSpeech(); });
   ui.mic.addEventListener('click', startMic);
   ui.micRetry.addEventListener('click', startMic);
   ui.micEn.addEventListener('click', () => {
