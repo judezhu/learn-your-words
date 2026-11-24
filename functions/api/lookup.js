@@ -67,9 +67,15 @@ export async function onRequestPost(context) {
         messages: [{ role: 'user', content: prompt }]
       })
     });
-    const data = await r.json();
+    let data = null;
+    try { data = await r.json(); } catch (e) { data = null; }
     const text =
       (data && data.content && data.content[0] && data.content[0].text) || '';
+    // A failed Anthropic call often comes back as non-2xx JSON with no text.
+    // Returning 200 and an empty string made the page say the word was unknown.
+    if (!r.ok || (data && data.error) || !String(text).trim()) {
+      return json({ error: 'upstream error' }, 502);
+    }
     return json({ text });
   } catch (e) {
     return json({ error: 'upstream error' }, 502);
