@@ -67,7 +67,7 @@ const state = {
   micLang: 'zh',
   notFound: false,
   serviceError: false,
-  cat: 'words',
+  cat: 'pokemon',
   looking: false,
   micMsg: '',
   pokeErr: false,
@@ -1592,4 +1592,8 @@ function bind() {
 
 loadCache();
 bind();
+if (state.cat === 'pokemon') {
+  refreshLive();
+  ensureEvo();
+}
 render();
