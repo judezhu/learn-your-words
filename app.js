@@ -603,8 +603,15 @@ function toggleMic() {
   }
 }
 
+function isPokemonResult(r) {
+  if (!r) return false;
+  if (typeof r.id === 'number') return true;
+  const img = String(r.img || '');
+  return img.indexOf('/official-artwork/') !== -1 || img.indexOf('/sprites/pokemon/') !== -1;
+}
 function signWordOf(r) {
-  return String((r && (r.en || r.enD)) || '').trim().toLowerCase();
+  if (!r || isPokemonResult(r)) return '';
+  return String(r.en || r.enD || '').trim().toLowerCase();
 }
 function signPage(word) {
   return 'https://www.signasl.org/sign/' + encodeURIComponent(word.replace(/\s+/g, '-'));
@@ -619,8 +626,8 @@ function safeHttp(url) {
 
 function openSign() {
   const r = state.result;
-  if (!r) return;
   const word = signWordOf(r);
+  if (!word) return;
   state.signOpen = true;
   state.signVideo = null;
   state.signEmbed = null;
@@ -774,7 +781,14 @@ function renderResult() {
 
   const word = signWordOf(r);
   ui.signRow.hidden = !word;
-  ui.signLabel.textContent = word ? ('See the sign for "' + (r.enD || r.en) + '"') : 'See the sign';
+  if (word) ui.signLabel.textContent = 'See the sign for "' + (r.enD || r.en) + '"';
+  if (!word && state.signOpen) {
+    state.signOpen = false;
+    state.signVideo = null;
+    state.signEmbed = null;
+    state.signLoading = false;
+    signReq += 1;
+  }
 
   const hasEx = !!(r.exEn || r.exZh);
   ui.ex.hidden = !hasEx;
