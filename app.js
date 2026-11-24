@@ -841,6 +841,7 @@ function attachModel(stage, tilt, id, poster) {
     let mv = null;
 
     function show2d() {
+      ui.art.classList.remove('is-3d');
       tilt.hidden = false;
       if (mv) mv.hidden = true;
       toggle.textContent = '立体';
@@ -867,6 +868,14 @@ function attachModel(stage, tilt, id, poster) {
           mv.touchAction = 'pan-y';
           mv.interactionPrompt = 'none';
           mv.shadowIntensity = 0.55;
+          mv.cameraTarget = 'auto auto auto';
+          mv.cameraOrbit = '0deg 75deg auto';
+          mv.fieldOfView = 'auto';
+          mv.style.display = 'block';
+          mv.style.width = '100%';
+          mv.style.height = '280px';
+          mv.style.contain = 'none';
+          mv.style.transform = 'none';
           if (!motionReduced()) {
             mv.autoRotate = true;
             mv.autoRotateDelay = 0;
@@ -874,11 +883,12 @@ function attachModel(stage, tilt, id, poster) {
           mv.addEventListener('pointerdown', () => { mv.autoRotate = false; });
           mv.addEventListener('load', () => {
             const names = mv.availableAnimations || [];
-            if (!names.length) return;
-            const idle = names.find((n) => /idle|stand|wait|breath/i.test(n));
-            mv.animationName = idle || names[0];
-            if (!motionReduced()) {
-              try { mv.play(); } catch (e) {}
+            if (names.length) {
+              const idle = names.find((n) => /idle|stand|wait|breath/i.test(n));
+              mv.animationName = idle || names[0];
+              if (!motionReduced()) {
+                try { mv.play(); } catch (e) {}
+              }
             }
           });
           mv.addEventListener('error', fail);
@@ -886,6 +896,7 @@ function attachModel(stage, tilt, id, poster) {
         }
         if (!mv.src) mv.src = MODEL_BASE + path;
         mv.hidden = false;
+        ui.art.classList.add('is-3d');
         tilt.hidden = true;
       }).catch(fail);
     }
@@ -915,6 +926,7 @@ function bindArtTilt(stage, tilt) {
   let touchId = null;
 
   function apply(x, y) {
+    if (tilt.hidden || ui.art.classList.contains('is-3d')) return;
     const rect = stage.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const px = Math.max(-0.5, Math.min(0.5, (x - rect.left) / rect.width - 0.5));
