@@ -23,8 +23,9 @@ The same run writes evolutions.json: one compact chain per family, ids only.
 It reads pokemon_species.csv (evolves_from_species_id, evolution_chain_id)
 and pokemon_evolution.csv (the level, when it is a plain level-up, and the
 form-to-form rows for regional lines such as Alolan Vulpix or Galarian
-Meowth). Names and sprites stay in pokemon.json. Pass --evolutions to refresh
-only that file.
+Meowth). Mega, Primal, and Gigantamax forms from pokemon.json are extra
+branches, marked with a tag code instead of a level. Names and sprites stay
+in pokemon.json. Pass --evolutions to refresh only that file.
 
 Usage (from the repo root, needs network the first time):
 
@@ -501,8 +502,76 @@ def write_evolutions(shipped: set[int] | None = None) -> None:
         for node in group:
             node_root[node] = key
 
-    # Forms that are not themselves a link (Mega, Gigantamax, costumes) use
-    # the base species chain, and the card highlights that species.
+    # Mega (including X/Y), Primal, and Gigantamax are extra branches after
+    # the species they belong to. The negative codes are labels, not levels:
+    # -1 超级进化, -2 超极巨化, -3 原始回归.
+    battle_by_species: dict[int, list[tuple[int, int]]] = {}
+    for pid in shipped:
+        if pid <= 1025:
+            continue
+        ident = ident_of.get(pid, "")
+        if "-gmax" in ident:
+            tag = -2
+        elif "-primal" in ident:
+            tag = -3
+        elif "-mega" in ident:
+            tag = -1
+        else:
+            continue
+        sid = species_of.get(pid)
+        if sid is None:
+            continue
+        battle_by_species.setdefault(sid, []).append((pid, tag))
+    for forms in battle_by_species.values():
+        forms.sort(key=lambda item: ({-1: 0, -3: 1, -2: 2}[item[1]], item[0]))
+
+    def prefix_of(branches: list[list[int]], species_id: int) -> list[int] | None:
+        for path in branches:
+            if species_id in path:
+                return path[: path.index(species_id) + 1]
+        return None
+
+    def levels_before(key: str, branches: list[list[int]], species_id: int, prefix: list[int]) -> list[int]:
+        rows = level_map.get(key)
+        if rows:
+            for path, row in zip(branches, rows):
+                if species_id in path:
+                    return row[: path.index(species_id) + 1]
+        return [0] * len(prefix)
+
+    for key, branches in list(chains.items()):
+        species_in = sorted({n for path in branches for n in path if n <= 1025 and n in battle_by_species})
+        extras: list[list[int]] = []
+        extra_levels: list[list[int]] = []
+        for sid in species_in:
+            prefix = prefix_of(branches, sid)
+            if not prefix:
+                continue
+            lead = levels_before(key, branches, sid, prefix)
+            for pid, tag in battle_by_species[sid]:
+                extras.append(prefix + [pid])
+                extra_levels.append(lead + [tag])
+                node_root[pid] = key
+        if not extras:
+            continue
+        if key not in level_map and any(n for row in extra_levels for n in row):
+            level_map[key] = [[0] * len(path) for path in branches]
+        chains[key] = branches + extras
+        if key in level_map:
+            level_map[key] = level_map[key] + extra_levels
+
+    for sid, forms in battle_by_species.items():
+        if sid in node_root or sid not in shipped:
+            continue
+        key = str(sid)
+        chains[key] = [[sid, pid] for pid, _tag in forms]
+        level_map[key] = [[0, tag] for _pid, tag in forms]
+        node_root[sid] = key
+        for pid, _tag in forms:
+            node_root[pid] = key
+
+    # Other forms (costumes, colors) use the base species chain and highlight
+    # that species. Mega, Primal, and Gigantamax are already in the chain.
     member_of: dict[str, int] = {}
     highlight: dict[str, int] = {}
     for pid, root in node_root.items():
@@ -582,9 +651,12 @@ def write_evolutions(shipped: set[int] | None = None) -> None:
         print(f"  {label} ({pid}) focus={focus} {got}")
 
     problems = []
-    bulba = chain_for(1)
-    if bulba != [[1, 2, 3]] or level_map.get("1") != [[0, 16, 32]]:
-        problems.append(f"Bulbasaur {bulba} levels {level_map.get('1')}")
+    bulba = chain_for(1) or []
+    bulba_levels = level_map.get("1")
+    if [1, 2, 3] not in bulba or [1, 2, 3, 10033] not in bulba or [1, 2, 3, 10195] not in bulba:
+        problems.append(f"Bulbasaur {bulba}")
+    if not bulba_levels or [0, 16, 32] not in bulba_levels or [0, 16, 32, -1] not in bulba_levels or [0, 16, 32, -2] not in bulba_levels:
+        problems.append(f"Bulbasaur levels {bulba_levels}")
     eevee = chain_for(133) or []
     eevee_ids = {path[-1] for path in eevee}
     if not {134, 135, 136, 196, 197, 470, 471, 700} <= eevee_ids:
@@ -601,8 +673,17 @@ def write_evolutions(shipped: set[int] | None = None) -> None:
     pika = chain_for(25) or []
     if not any(path[:3] == [172, 25, 26] or path == [172, 25, 26] for path in pika):
         problems.append(f"Pikachu {pika}")
-    if highlight.get("10034") != 6:
-        problems.append(f"Mega Charizard highlight {highlight.get('10034')}")
+    char = chain_for(6) or []
+    if not {10034, 10035, 10196} <= {path[-1] for path in char}:
+        problems.append(f"Charizard forms {char}")
+    if 10199 not in {path[-1] for path in (chain_for(25) or [])}:
+        problems.append(f"Pikachu missing Gigantamax {chain_for(25)}")
+    if 10205 not in {path[-1] for path in (chain_for(133) or [])}:
+        problems.append(f"Eevee missing Gigantamax {chain_for(133)}")
+    if highlight.get("10034") is not None or highlight.get("10033") is not None:
+        problems.append("Mega forms should highlight themselves")
+    if chain_for(10033) is None or 10033 not in {path[-1] for path in chain_for(10033)}:
+        problems.append("Mega Venusaur is not on its chain")
     if problems:
         raise SystemExit("evolution checks failed:\n" + "\n".join(problems))
 

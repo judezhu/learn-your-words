@@ -802,8 +802,9 @@ function renderResult() {
   ui.exZh.textContent = r.exZh || '';
 }
 
-// evolutions.json is ids only. b = branches per family, l = level-up numbers,
-// m = other pokemon that share a family, h = species to highlight for a form.
+// evolutions.json is ids only. b = branches per family, l = labels
+// (positive = level, -1 mega, -2 gigantamax, -3 primal),
+// m = other pokemon that share a family, h = species to highlight for a costume.
 let evoData = null;
 let evoPromise = null;
 let evoFailed = false;
@@ -855,13 +856,25 @@ function evoTree(branches, levels) {
   return root;
 }
 
+const EVO_TAG = {
+  '-1': ['超级进化', 'is-mega'],
+  '-2': ['超极巨化', 'is-gmax'],
+  '-3': ['原始回归', 'is-primal'],
+};
+
 function evoArrow(level, down) {
   const s = document.createElement('span');
   s.className = 'evo-arrow' + (down ? ' is-down' : '');
   s.setAttribute('aria-hidden', 'true');
   const mark = document.createElement('i');
   s.append(mark);
-  if (level) {
+  const tag = EVO_TAG[String(level)];
+  if (tag) {
+    const lv = document.createElement('small');
+    lv.className = 'evo-tag ' + tag[1];
+    lv.textContent = tag[0];
+    s.append(lv);
+  } else if (level > 0) {
     const lv = document.createElement('small');
     lv.textContent = 'Lv.' + level;
     s.append(lv);

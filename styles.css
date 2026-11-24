@@ -340,6 +340,17 @@ img { max-width: 100%; }
   margin-top: 0;
 }
 .evo-fork.is-deep .evo-line { width: auto; }
+.evo-fork.is-deep .evo-fork {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 0;
+  gap: 2px;
+}
+.evo-fork.is-deep .evo-fork .evo-leaf { flex-direction: row; }
+.evo-fork.is-deep .evo-fork .evo-arrow.is-down i { transform: rotate(45deg); }
 .evo-leaf {
   display: flex;
   align-items: center;
@@ -350,7 +361,9 @@ img { max-width: 100%; }
   flex-direction: column;
 }
 .evo-arrow {
-  width: 22px;
+  width: auto;
+  min-width: 22px;
+  max-width: 72px;
   flex: none;
   display: flex;
   flex-direction: column;
@@ -358,6 +371,22 @@ img { max-width: 100%; }
   justify-content: center;
   gap: 1px;
 }
+.evo-tag {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.evo-arrow small.evo-tag { color: #fff; line-height: 1.2; }
+.evo-tag.is-mega { background: var(--accent); }
+.evo-tag.is-gmax { background: #7a5af5; }
+.evo-tag.is-primal { background: #f08a24; }
 .evo-arrow i {
   display: block;
   width: 8px;
