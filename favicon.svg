@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#ffe1ec"/>
+  <circle cx="23" cy="30" r="14" fill="#ffffff" stroke="#ff5a78" stroke-width="3"/>
+  <text x="23" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#ff5a78">A</text>
+  <circle cx="43" cy="30" r="14" fill="#ffffff" stroke="#23b5d3" stroke-width="3"/>
+  <text x="43" y="36" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#23b5d3">文</text>
+</svg>

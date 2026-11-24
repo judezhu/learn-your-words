@@ -1,204 +1,148 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Bundled Page</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #ffe1ec; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-    #__bundler_loading { position: fixed; bottom: 20px; right: 20px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; color: #666; background: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); z-index: 10000; }
-    #__bundler_thumbnail { position: fixed; inset: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #ffe1ec; z-index: 9999; }
-    #__bundler_thumbnail svg { width: 100%; height: 100%; object-fit: contain; }
-    #__bundler_placeholder { color: #999; font-size: 14px; }
-  </style>
-  <noscript>
-    <style>#__bundler_loading { display: none; }</style>
-    <div style="position:fixed;bottom:12px;left:12px;font:13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;color:#999;background:rgba(255,255,255,0.9);padding:6px 12px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.08);z-index:10000;">
-      This page requires JavaScript to display.
-    </div>
-  </noscript>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffe1ec">
+  <title>Learn Your Words · 学单词</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body>
-  <div id="__bundler_thumbnail">
-  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
-    <rect x="250" y="170" width="700" height="460" rx="90" fill="#ffffff" stroke="#ff9db4" stroke-width="14"></rect>
-    <circle cx="470" cy="400" r="120" fill="#fff0f4" stroke="#ff5a78" stroke-width="12"></circle>
-    <text x="470" y="446" font-family="Fredoka, sans-serif" font-size="120" font-weight="700" fill="#ff5a78" text-anchor="middle">A</text>
-    <circle cx="730" cy="400" r="120" fill="#e6f7fb" stroke="#23b5d3" stroke-width="12"></circle>
-    <text x="730" y="452" font-family="'Noto Sans SC', sans-serif" font-size="120" font-weight="700" fill="#23b5d3" text-anchor="middle">文</text>
-    <text x="600" y="700" font-family="Fredoka, sans-serif" font-size="60" font-weight="700" fill="#36304f" text-anchor="middle">Learn Your Words</text>
-  </svg>
-</div>
-  <div id="__bundler_loading">Unpacking...</div>
+<body data-theme="kid">
+  <main class="shell">
+    <section id="welcome">
+      <div class="panda" aria-hidden="true">🐼</div>
+      <h1>Learn Your Words</h1>
+      <div class="welcome-zh">词语朋友</div>
+      <p class="welcome-q">Who's learning today?</p>
 
-  <script>
-    
-document.addEventListener('DOMContentLoaded', async function() {
-  const loading = document.getElementById('__bundler_loading');
-  function setStatus(msg) { if (loading) loading.textContent = msg; }
+      <button type="button" id="btn-kid" class="choice choice-kid">
+        <span class="choice-emoji" aria-hidden="true">😄</span>
+        <span class="choice-text">
+          <span class="choice-title">I'm a Kid!</span>
+          <span class="choice-sub">Fun, colorful &amp; cuddly</span>
+        </span>
+      </button>
 
-  // Error sink persists across replaceWith since it's on window, not the DOM.
-  window.addEventListener('error', function(e) {
-    var p = document.body || document.documentElement;
-    var d = document.getElementById('__bundler_err') || p.appendChild(document.createElement('div'));
-    d.id = '__bundler_err';
-    d.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;font:12px/1.4 ui-monospace,monospace;background:#2a1215;color:#ff8a80;padding:10px 14px;border-radius:8px;border:1px solid #5c2b2e;z-index:99999;white-space:pre-wrap;max-height:40vh;overflow:auto';
-    d.textContent = (d.textContent ? d.textContent + String.fromCharCode(10) : '') +
-      '[bundle] ' + (e.message || e.type) +
-      (e.filename ? ' (' + e.filename.slice(0, 60) + ':' + e.lineno + ')' : '');
-  }, true);
+      <button type="button" id="btn-adult" class="choice choice-adult">
+        <span class="choice-emoji" aria-hidden="true">📖</span>
+        <span class="choice-text">
+          <span class="choice-title choice-title-adult">I'm a Grown-up</span>
+          <span class="choice-sub choice-sub-muted">Clean &amp; simple dictionary</span>
+        </span>
+      </button>
+    </section>
 
-  try {
-    // Bundle data lives in external files so index.html stays small enough
-    // to view on GitHub. Fall back to inline script tags if the fetch fails
-    // (e.g. opened via file://), preserving the original single-file behavior.
-    async function loadBundleData(file, type) {
-      try {
-        const res = await fetch(file);
-        if (res.ok) return await res.json();
-      } catch (err) {
-        console.warn('[bundler] fetch ' + file + ' failed, trying inline:', err);
-      }
-      const el = document.querySelector('script[type="' + type + '"]');
-      if (el) return JSON.parse(el.textContent);
-      throw new Error('missing bundle data: ' + file);
-    }
+    <section id="app-screen" hidden>
+      <header class="top">
+        <button type="button" id="btn-back" class="icon-btn" title="Back" aria-label="Back">‹</button>
+        <div class="top-text">
+          <div id="app-title" class="app-title">Learn Your Words</div>
+          <div id="app-sub" class="app-sub">Tap a friend or search!</div>
+        </div>
+        <div id="app-emoji" class="top-emoji" aria-hidden="true">🐾</div>
+      </header>
 
-    // pokemon.json holds the curated Pokémon list (id / English / 中文 / pinyin)
-    // as a plain, human-readable file you can browse and edit on GitHub. It is
-    // injected as window.__POKEMON__ before the app script runs. Missing/broken
-    // file just means an empty curated list — the app still boots.
-    async function loadPokemon() {
-      try {
-        const res = await fetch('pokemon.json');
-        if (res.ok) return await res.json();
-      } catch (err) {
-        console.warn('[bundler] pokemon.json fetch failed:', err);
-      }
-      return [];
-    }
+      <div class="search">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input id="q" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type a word, press Enter" aria-label="Search">
+        <button type="button" id="btn-mic" class="mic" title="Speak" aria-label="Speak">🎤</button>
+      </div>
 
-    const [manifest, templateData, pokemonData] = await Promise.all([
-      loadBundleData('bundle.manifest.json', '__bundler/manifest'),
-      loadBundleData('bundle.template.json', '__bundler/template'),
-      loadPokemon(),
-    ]);
-    let template = templateData;
+      <div class="mic-langs">
+        <span>Mic hears:</span>
+        <button type="button" id="btn-mic-en" class="pill on">EN</button>
+        <button type="button" id="btn-mic-zh" class="pill">中文</button>
+      </div>
 
-    const uuids = Object.keys(manifest);
-    setStatus('Unpacking ' + uuids.length + ' assets...');
+      <div id="mic-listen" class="listen" hidden>🎙️ Listening… say a word!</div>
+      <div id="mic-msg" class="mic-msg" hidden></div>
 
-    const blobUrls = {};
-    await Promise.all(uuids.map(async (uuid) => {
-      const entry = manifest[uuid];
-      try {
-        const binaryStr = atob(entry.data);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+      <div id="looking" class="looking" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="looking-title">Looking it up… ✨</div>
+        <div class="looking-sub">Finding the word for you</div>
+      </div>
 
-        let finalBytes = bytes;
-        if (entry.compressed) {
-          if (typeof DecompressionStream !== 'undefined') {
-            const ds = new DecompressionStream('gzip');
-            const writer = ds.writable.getWriter();
-            const reader = ds.readable.getReader();
-            writer.write(bytes);
-            writer.close();
-            const chunks = [];
-            let totalLen = 0;
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              chunks.push(value);
-              totalLen += value.length;
-            }
-            finalBytes = new Uint8Array(totalLen);
-            let offset = 0;
-            for (const chunk of chunks) { finalBytes.set(chunk, offset); offset += chunk.length; }
-          } else {
-            console.warn('DecompressionStream not available, asset ' + uuid + ' may not render');
-          }
-        }
+      <article id="result" class="card" hidden>
+        <div id="result-badge" class="badge" hidden>✨ LOOKED UP JUST FOR YOU</div>
+        <div id="result-art" class="art"></div>
+        <div class="word-line">
+          <span id="result-en" class="en-word"></span>
+          <button type="button" id="speak-en" class="speak speak-en" title="Say it in English" aria-label="Say it in English">🔊</button>
+        </div>
+        <div id="zh-line" class="word-line">
+          <span id="result-zh" class="zh-word"></span>
+          <button type="button" id="speak-zh" class="speak speak-zh" title="Say it in Chinese" aria-label="Say it in Chinese">🔊</button>
+        </div>
+        <div id="result-py" class="pinyin"></div>
 
-        blobUrls[uuid] = URL.createObjectURL(new Blob([finalBytes], { type: entry.mime }));
-      } catch (err) {
-        console.error('Failed to decode asset ' + uuid + ':', err);
-        blobUrls[uuid] = URL.createObjectURL(new Blob([], { type: entry.mime }));
-      }
-    }));
+        <div id="result-sign" class="sign-row" hidden>
+          <button type="button" id="btn-sign" class="sign-btn">
+            <span aria-hidden="true">👋</span>
+            <span id="sign-label">See the sign</span>
+          </button>
+          <div class="sign-hint">Opens a video of the whole-word sign 🎬</div>
+        </div>
 
-    const extResEl = document.querySelector('script[type="__bundler/ext_resources"]');
-    const extResources = extResEl ? JSON.parse(extResEl.textContent) : [];
-    const resourceMap = {};
-    for (const entry of extResources) {
-      if (blobUrls[entry.uuid]) resourceMap[entry.id] = blobUrls[entry.uuid];
-    }
+        <div id="result-ex" class="examples" hidden>
+          <div class="ex-label">Try saying it</div>
+          <div class="ex-line">
+            <button type="button" id="speak-ex-en" class="speak speak-mini speak-en-soft" title="Say the English sentence" aria-label="Say the English sentence">🔊</button>
+            <span id="result-ex-en"></span>
+          </div>
+          <div class="ex-line">
+            <button type="button" id="speak-ex-zh" class="speak speak-mini speak-zh-soft" title="Say the Chinese sentence" aria-label="Say the Chinese sentence">🔊</button>
+            <span id="result-ex-zh" class="ex-zh"></span>
+          </div>
+        </div>
+      </article>
 
-    setStatus('Rendering...');
-    for (const uuid of uuids) template = template.split(uuid).join(blobUrls[uuid]);
+      <div id="not-found" class="notice" hidden>
+        <div class="notice-emoji">🤔</div>
+        <div class="notice-title">Hmm, I don't know that word yet!</div>
+        <div class="notice-sub">Try one of these friends:</div>
+        <div id="suggestions" class="pills"></div>
+      </div>
 
-    // Strip integrity + crossorigin — blob URLs from a file:// document inherit
-    // a null origin, so crossorigin forces a CORS fetch that SRI then rejects.
-    // The manifest bytes are ours; SRI protects against CDN compromise, not this.
-    template = template.replace(/\s+integrity="[^"]*"/gi, '').replace(/\s+crossorigin="[^"]*"/gi, '');
+      <div id="service-error" class="notice" hidden>
+        <div class="notice-emoji">🛠️</div>
+        <div class="notice-title">The word service is having trouble right now.</div>
+        <div class="notice-sub">Please try again in a moment.<br>查词服务暂时有点问题，请再试一次。</div>
+        <button type="button" id="btn-retry" class="retry">Try again</button>
+      </div>
 
-    const resourceScript = '<script>window.__resources = ' +
-      JSON.stringify(resourceMap).split('</' + 'script>').join('<\\/' + 'script>') +
-      ';window.__POKEMON__ = ' +
-      JSON.stringify(pokemonData).split('</' + 'script>').join('<\\/' + 'script>') +
-      ';</' + 'script>';
-    // Inject after <head> so the DOCTYPE stays first; prepending the script
-    // would push the parser into quirks mode. DOMParser always emits a <head>
-    // (synthesizing one if the source HTML omitted it) but may carry
-    // attributes through, so match the full opening tag. slice() rather than
-    // replace() keeps us clear of $-pattern substitution in resourceScript.
-    const headOpen = template.match(/<head[^>]*>/i);
-    if (headOpen) {
-      const i = headOpen.index + headOpen[0].length;
-      template = template.slice(0, i) + resourceScript + template.slice(i);
-    }
+      <div id="home">
+        <div class="tabs">
+          <button type="button" id="btn-cat-words" class="tab on">📚 Words</button>
+          <button type="button" id="btn-cat-poke" class="tab">⚡ Pokémon</button>
+        </div>
+        <div id="home-label" class="home-label">✨ Word friends to explore</div>
+        <div id="word-grid" class="chip-grid"></div>
+        <div id="poke-wrap">
+          <div id="poke-spacer">
+            <div id="poke-window"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
 
-    // Parse the template and swap the root element. Scripts inserted via
-    // DOMParser/replaceWith are inert per spec — re-create each with
-    // createElement so they execute, awaiting onload for src scripts to
-    // preserve ordering (React before ReactDOM before Babel before text/babel).
-    const doc = new DOMParser().parseFromString(template, 'text/html');
-    document.documentElement.replaceWith(doc.documentElement);
-    const dead = Array.from(document.scripts);
-    for (const old of dead) {
-      const s = document.createElement('script');
-      for (const a of old.attributes) s.setAttribute(a.name, a.value);
-      s.textContent = old.textContent;
-      // text/babel scripts with a src: fetch and inline. transformScriptTags
-      // does XHR against the src, but blob:null/ from a file:// origin is
-      // silently dropped. Inlining makes it a plain inline babel script,
-      // which transformScriptTags handles unconditionally.
-      if ((s.type === 'text/babel' || s.type === 'text/jsx') && s.src) {
-        const r = await fetch(s.src);
-        s.textContent = await r.text();
-        s.removeAttribute('src');
-      }
-      const p = s.src ? new Promise(function(r) { s.onload = s.onerror = r; }) : null;
-      old.replaceWith(s);
-      if (p) await p;
-    }
-    // Babel standalone auto-transforms type=text/babel on DOMContentLoaded,
-    // which fired before we swapped the document. Trigger manually if present.
-    if (window.Babel && typeof window.Babel.transformScriptTags === 'function') {
-      window.Babel.transformScriptTags();
-    }
-  } catch (err) {
-    setStatus('Error unpacking: ' + err.message);
-    console.error('Bundle unpack error:', err);
-  }
-});
+  <div id="sign-modal" hidden>
+    <div id="sign-backdrop" class="sign-backdrop">
+      <div id="sign-panel" class="sign-panel" role="dialog" aria-modal="true" aria-labelledby="sign-title">
+        <div class="sign-bar">
+          <span aria-hidden="true">👋</span>
+          <div id="sign-title" class="sign-title"></div>
+          <a id="sign-open" href="https://www.signasl.org/" target="_blank" rel="noopener">Open ↗</a>
+          <button type="button" id="sign-close" class="icon-btn" title="Close" aria-label="Close">✕</button>
+        </div>
+        <div id="sign-stage" class="sign-stage"></div>
+        <div class="sign-foot">Whole-word sign · video from signasl.org. Not playing? Tap “Open ↗”.</div>
+      </div>
+    </div>
+  </div>
 
-  </script>
-
-
-  <script type="__bundler/ext_resources">
-[]
-  </script>
-
+  <script src="app.js"></script>
 </body>
 </html>
