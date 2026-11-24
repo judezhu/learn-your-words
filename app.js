@@ -865,8 +865,11 @@ function attachModel(stage, tilt, id, poster) {
           mv.alt = '';
           mv.poster = poster || '';
           mv.cameraControls = true;
-          mv.touchAction = 'pan-y';
+          mv.touchAction = 'none';
           mv.interactionPrompt = 'none';
+          mv.orbitSensitivity = 1.5;
+          mv.minCameraOrbit = 'auto 0deg auto';
+          mv.maxCameraOrbit = 'auto 180deg auto';
           mv.shadowIntensity = 0.55;
           mv.cameraTarget = 'auto auto auto';
           mv.cameraOrbit = '0deg 75deg auto';

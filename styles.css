@@ -298,7 +298,7 @@ img { max-width: 100%; }
   --poster-color: transparent;
   --progress-bar-height: 0px;
   --progress-bar-color: transparent;
-  touch-action: pan-y;
+  touch-action: none;
 }
 .art.is-3d .art-stage {
   display: none;
