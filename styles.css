@@ -281,11 +281,78 @@ img { max-width: 100%; }
   animation: wf-floaty 3.6s ease-in-out infinite;
   display: inline-block;
 }
+.art-stage {
+  display: inline-block;
+  perspective: 720px;
+  touch-action: pan-y;
+}
+.art-model {
+  display: block;
+  width: 100%;
+  height: 280px;
+  max-width: 100%;
+  margin: 0;
+  contain: none !important;
+  overflow: visible;
+  background: transparent;
+  --poster-color: transparent;
+  --progress-bar-height: 0px;
+  --progress-bar-color: transparent;
+  touch-action: none;
+}
+.art.is-3d .art-stage {
+  display: none;
+  perspective: none;
+  transform: none;
+}
+.art-tools {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.art-tool {
+  cursor: pointer;
+  border: none;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 12px;
+  min-height: 36px;
+}
+.art-tilt {
+  position: relative;
+  display: inline-block;
+  transform-style: preserve-3d;
+  transition: transform 0.65s cubic-bezier(0.18, 1.25, 0.36, 1), filter 0.65s ease;
+  filter: drop-shadow(0 14px 12px rgba(90, 50, 120, 0.18));
+}
+.art-stage.is-tilting .art-tilt { transition: none; }
+.art-shine {
+  position: absolute;
+  inset: 6% 8%;
+  border-radius: 46%;
+  background: radial-gradient(circle at var(--shine-x, 32%) var(--shine-y, 22%), rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 58%);
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.art-stage.is-tilting .art-shine { opacity: 1; }
 .art-img {
   width: 160px;
   height: 160px;
   object-fit: contain;
   animation: wf-floaty 3.6s ease-in-out infinite;
+  display: block;
+}
+.art-stage.is-tilting .art-img { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .art-img { animation: none; }
+  .art-tilt { transition: none; transform: none !important; filter: drop-shadow(0 8px 8px rgba(90, 50, 120, 0.12)); }
+  .art-shine { display: none; }
 }
 .word-line {
   display: flex;
@@ -642,6 +709,7 @@ img { max-width: 100%; }
   image-rendering: pixelated;
   flex: none;
 }
+.poke-chip.is-art img { image-rendering: auto; }
 .poke-chip .en, .poke-chip .zh {
   display: -webkit-box;
   -webkit-box-orient: vertical;

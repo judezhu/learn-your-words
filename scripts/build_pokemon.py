@@ -25,7 +25,10 @@ and pokemon_evolution.csv (the level, when it is a plain level-up, and the
 form-to-form rows for regional lines such as Alolan Vulpix or Galarian
 Meowth). Mega, Primal, and Gigantamax forms from pokemon.json are extra
 branches, marked with a tag code instead of a level. Names and sprites stay
-in pokemon.json. Pass --evolutions to refresh only that file.
+in pokemon.json. The same run also writes home.json: the Pokémon ids that
+have no Pokémon HOME 3D render, so the page can use that artwork and fall
+back to the official art for the rest. Pass --evolutions or --home to
+refresh just one of those files.
 
 Usage (from the repo root, needs network the first time):
 
@@ -49,6 +52,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "pokemon.json"
 EVO_OUT = ROOT / "evolutions.json"
+HOME_OUT = ROOT / "home.json"
 CACHE = Path("/tmp/poke-build")
 ART_CACHE = Path("/tmp/poke-art")
 ART_URL = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/{id}.png"
@@ -335,6 +339,213 @@ def load_curated_locks() -> dict[int, dict]:
     except Exception:
         data = json.loads((ROOT / "pokemon.json").read_text(encoding="utf-8"))
     return {p["id"]: p for p in data}
+
+
+def home_sprite_ids() -> set[int]:
+    """Ids that have a PNG in PokeAPI's pokemon/other/home sprite folder."""
+    req = urllib.request.Request(
+        "https://api.github.com/repos/PokeAPI/sprites/contents/sprites/pokemon/other?ref=master",
+        headers={"User-Agent": "LearnYourWords/1.0", "Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        listing = json.loads(resp.read().decode())
+    sha = next(item["sha"] for item in listing if item["name"] == "home")
+    req = urllib.request.Request(
+        "https://api.github.com/repos/PokeAPI/sprites/git/trees/" + sha,
+        headers={"User-Agent": "LearnYourWords/1.0", "Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        tree = json.loads(resp.read().decode())
+    ids: set[int] = set()
+    for node in tree.get("tree", []):
+        name = node.get("path") or ""
+        if name.endswith(".png") and name[:-4].isdigit():
+            ids.add(int(name[:-4]))
+    return ids
+
+
+def write_home(shipped: set[int] | None = None) -> None:
+    """Write home.json: ids in pokemon.json with no Pokémon HOME render.
+
+    Everyone else uses
+    sprites/pokemon/other/home/<id>.png. The page still falls back to the
+    official artwork if a HOME image 404s.
+    """
+    if shipped is None:
+        shipped = {int(p["id"]) for p in json.loads(OUT.read_text(encoding="utf-8"))}
+    have = home_sprite_ids()
+    skip = sorted(i for i in shipped if i not in have)
+    HOME_OUT.write_text(json.dumps({"skip": skip}) + "\n", encoding="utf-8")
+    print(f"wrote {HOME_OUT} home={len(shipped) - len(skip)} fallback={len(skip)}")
+    print("fallback ids:", ", ".join(str(i) for i in skip) or "(none)")
+
+
+MODEL_OUT = ROOT / "models3d.json"
+MODEL_CDN_TREE = "https://api.github.com/repos/Pokemon-3D-api/assets/git/trees/"
+MODEL_CATS = (
+    "regular", "mega", "x", "y", "za",
+    "alolan", "galar", "hisuian", "gmax", "primal", "origin",
+)
+# Shiny folders (shiny, megaShiny, sx, sy, …) are skipped on purpose.
+
+
+def model_files() -> dict[str, list[tuple[str, int]]]:
+    """Filename + byte size for each non-shiny models/opt category."""
+    req = urllib.request.Request(
+        "https://api.github.com/repos/Pokemon-3D-api/assets/contents/models/opt?ref=main",
+        headers={"User-Agent": "LearnYourWords/1.0", "Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        listing = json.loads(resp.read().decode())
+    sha_of = {item["name"]: item["sha"] for item in listing if item["type"] == "dir"}
+    out: dict[str, list[tuple[str, int]]] = {}
+    for cat in MODEL_CATS:
+        req = urllib.request.Request(
+            MODEL_CDN_TREE + sha_of[cat],
+            headers={"User-Agent": "LearnYourWords/1.0", "Accept": "application/vnd.github+json"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            tree = json.loads(resp.read().decode())
+        files = []
+        for node in tree.get("tree", []):
+            name = node.get("path") or ""
+            if name.endswith(".glb"):
+                files.append((name, int(node.get("size") or 0)))
+        out[cat] = files
+    return out
+
+
+def write_models(shipped: set[int] | None = None) -> None:
+    """Map app Pokémon ids to a fan-made GLB path and its byte size.
+
+    Only unambiguous files are kept. Classic Mega stays in mega/, Mega X/Y
+    stay in x/ and y/, and Legends Z-A 'Z' megas stay on -mega-z ids.
+    Mega Blastoise is the odd file y/9.glb. Shiny folders are ignored.
+    """
+    if shipped is None:
+        shipped = {int(p["id"]) for p in json.loads(OUT.read_text(encoding="utf-8"))}
+    ensure_csvs()
+    by_species: dict[int, list[dict]] = {}
+    ident_of: dict[int, str] = {}
+    for row in read_csv("pokemon.csv"):
+        pid = int(row["id"])
+        sid = int(row["species_id"])
+        ident_of[pid] = row["identifier"]
+        by_species.setdefault(sid, []).append(row)
+    files = model_files()
+
+    def one_form(species_id: int, pred) -> int | None:
+        hits = []
+        for row in by_species.get(species_id, []):
+            pid = int(row["id"])
+            if pid == species_id or pid not in shipped:
+                continue
+            if pred(row["identifier"]):
+                hits.append(pid)
+        if len(hits) == 1:
+            return hits[0]
+        return None
+
+    mapping: dict[int, list] = {}
+
+    def add(pid: int | None, cat: str, name: str, size: int) -> None:
+        if pid is None or pid not in shipped or pid in mapping:
+            return
+        mapping[pid] = [f"{cat}/{name}", size]
+
+    plain = {name for name, _size in files["regular"]}
+    for name, size in files["regular"]:
+        if name.endswith(".glb") and name[:-4].isdigit():
+            add(int(name[:-4]), "regular", name, size)
+        elif name.endswith("-M.glb") and name[:-6].isdigit():
+            sid = int(name[:-6])
+            if f"{sid}.glb" not in plain:
+                add(sid, "regular", name, size)
+
+    for name, size in files["mega"]:
+        if not name[:-4].isdigit():
+            continue
+        sid = int(name[:-4])
+        add(one_form(sid, lambda ident: ident.endswith("-mega")), "mega", name, size)
+
+    for name, size in files["x"]:
+        if name[:-4].isdigit():
+            sid = int(name[:-4])
+            add(one_form(sid, lambda ident: ident.endswith("-mega-x")), "x", name, size)
+
+    for name, size in files["y"]:
+        if not name[:-4].isdigit():
+            continue
+        sid = int(name[:-4])
+        if sid == 9:
+            # The classic Mega Blastoise file lives in y/, not mega/.
+            add(one_form(sid, lambda ident: ident.endswith("-mega")), "y", name, size)
+        else:
+            add(one_form(sid, lambda ident: ident.endswith("-mega-y")), "y", name, size)
+
+    mega_names = {name for name, _size in files["mega"]}
+    for name, size in files["za"]:
+        if not name[:-4].isdigit():
+            continue
+        sid = int(name[:-4])
+        pid = one_form(sid, lambda ident: ident.endswith("-mega-z"))
+        if pid is None and f"{sid}.glb" not in mega_names:
+            pid = one_form(sid, lambda ident: ident.endswith("-mega"))
+        add(pid, "za", name, size)
+
+    suffix = {
+        "alolan": "-alola",
+        "galar": "-galar",
+        "hisuian": "-hisui",
+        "gmax": "-gmax",
+        "primal": "-primal",
+        "origin": "-origin",
+    }
+    for cat, end in suffix.items():
+        for name, size in files[cat]:
+            if not name[:-4].isdigit():
+                continue
+            sid = int(name[:-4])
+            add(one_form(sid, lambda ident, end=end: ident.endswith(end)), cat, name, size)
+
+    lines = ["{"]
+    keys = sorted(mapping)
+    for i, pid in enumerate(keys):
+        comma = "," if i < len(keys) - 1 else ""
+        lines.append(f"  {json.dumps(str(pid))}: {json.dumps(mapping[pid], separators=(',', ':'))}{comma}")
+    lines.append("}")
+    lines.append("")
+    MODEL_OUT.write_text("\n".join(lines), encoding="utf-8")
+
+    species_n = sum(1 for pid in keys if pid <= 1025)
+    forms_n = len(keys) - species_n
+    big = sum(1 for pid in keys if mapping[pid][1] >= 3 * 1024 * 1024)
+    print(f"wrote {MODEL_OUT} bytes={MODEL_OUT.stat().st_size} species={species_n} forms={forms_n} big={big}")
+
+    def expect(pid: int, path: str) -> None:
+        got = mapping.get(pid)
+        if not got or got[0] != path:
+            raise SystemExit(f"model map {pid} expected {path} got {got}")
+
+    expect(1, "regular/1.glb")
+    expect(6, "regular/6.glb")
+    expect(25, "regular/25.glb")
+    expect(521, "regular/521-M.glb")
+    expect(668, "regular/668-M.glb")
+    expect(916, "regular/916-M.glb")
+    expect(10034, "x/6.glb")
+    expect(10035, "y/6.glb")
+    expect(10036, "y/9.glb")
+    expect(10043, "x/150.glb")
+    expect(10044, "y/150.glb")
+    expect(10057, "mega/359.glb")
+    expect(10058, "mega/445.glb")
+    expect(10309, "za/445.glb")
+    expect(10233, "hisuian/157.glb")
+    if 1024 in mapping or 10307 in mapping:
+        raise SystemExit("1024 and Absol Mega Z should stay unmapped")
+    if mapping[249][1] < 3 * 1024 * 1024:
+        raise SystemExit("Lugia should be marked as a large file")
 
 
 def write_evolutions(shipped: set[int] | None = None) -> None:
@@ -891,12 +1102,19 @@ def main() -> None:
     print(", ".join(str(i) for i in missing_art) or "(none)")
     print(f"\n== skipped forms ({len(skipped)}) ==")
     print("\n".join(skipped))
-    write_evolutions({e["id"] for e in entries})
+    shipped_ids = {e["id"] for e in entries}
+    write_evolutions(shipped_ids)
+    write_home(shipped_ids)
+    write_models(shipped_ids)
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--evolutions":
         ensure_csvs()
         write_evolutions()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--home":
+        write_home()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--models":
+        write_models()
     else:
         main()

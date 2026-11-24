@@ -100,11 +100,30 @@ let pokeKey = '';
 let wordKey = '';
 let suggestKey = '';
 
-function artUrl(id) {
+// home.json lists ids with no Pokémon HOME render. Everyone else uses the
+// 3D HOME artwork; a missing file falls back to the official art at runtime.
+let homeSkip = new Set();
+
+function officialUrl(id) {
   return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/' + id + '.png';
+}
+function homeUrl(id) {
+  return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/' + id + '.png';
+}
+function artUrl(id) {
+  if (homeSkip.has(id)) return officialUrl(id);
+  return homeUrl(id);
 }
 function spriteUrl(id) {
   return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/' + id + '.png';
+}
+function attachPokeFallback(img, id) {
+  img.onerror = () => {
+    const src = img.src || '';
+    if (src.indexOf('/home/') !== -1) { img.src = officialUrl(id); return; }
+    if (src.indexOf('/official-artwork/') !== -1) { img.src = spriteUrl(id); return; }
+    img.onerror = null;
+  };
 }
 function titleName(slug) {
   return String(slug || '').split('-').filter(Boolean).map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
@@ -264,6 +283,7 @@ function presentPokemon(rec, id) {
   }
   const cached = aiCache['poke_' + rec.id];
   if (cached && cached.img) {
+    cached.img = artUrl(rec.id);
     showEntry(cached);
     return;
   }
@@ -760,6 +780,200 @@ function render() {
   layoutPoke();
 }
 
+const MODEL_BASE = 'https://cdn.jsdelivr.net/gh/Pokemon-3D-api/assets@main/models/opt/';
+const MODEL_BIG = 3 * 1024 * 1024;
+let modelMap = null;
+let modelPromise = null;
+let viewerPromise = null;
+
+function ensureModels() {
+  if (modelMap) return Promise.resolve(modelMap);
+  if (!modelPromise) {
+    modelPromise = loadJson('models3d.json').then((d) => {
+      modelMap = d || {};
+      return modelMap;
+    }).catch((e) => {
+      console.error(e);
+      modelPromise = null;
+      return null;
+    });
+  }
+  return modelPromise;
+}
+
+function ensureViewer() {
+  if (!viewerPromise) {
+    viewerPromise = import('https://cdn.jsdelivr.net/npm/@google/model-viewer@4.4.0/dist/model-viewer.min.js').then((mod) => {
+      const El = mod.ModelViewerElement;
+      if (El) El.dracoDecoderLocation = 'https://www.gstatic.com/draco/versioned/decoders/1.5.7/';
+      return El;
+    }).catch((e) => {
+      viewerPromise = null;
+      throw e;
+    });
+  }
+  return viewerPromise;
+}
+
+function formatModelSize(bytes) {
+  const mb = bytes / (1024 * 1024);
+  return (mb >= 10 ? String(Math.round(mb)) : mb.toFixed(1)) + ' MB';
+}
+
+function attachModel(stage, tilt, id, poster) {
+  ensureModels().then((map) => {
+    if (!state.result || state.result.id !== id || !stage.isConnected) return;
+    const row = map && map[String(id)];
+    if (!row) return;
+    const path = row[0];
+    const bytes = row[1] || 0;
+    const big = bytes >= MODEL_BIG;
+    const tools = document.createElement('div');
+    tools.className = 'art-tools';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'art-tool';
+    toggle.textContent = '立体';
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.className = 'art-tool';
+    loadBtn.textContent = '看立体 · ' + formatModelSize(bytes);
+    let mv = null;
+
+    function show2d() {
+      ui.art.classList.remove('is-3d');
+      tilt.hidden = false;
+      if (mv) mv.hidden = true;
+      toggle.textContent = '立体';
+      loadBtn.hidden = true;
+    }
+    function fail() {
+      if (mv) mv.remove();
+      mv = null;
+      show2d();
+      tools.remove();
+    }
+    function start3d() {
+      loadBtn.hidden = true;
+      toggle.hidden = false;
+      toggle.textContent = '图片';
+      ensureViewer().then(() => {
+        if (!state.result || state.result.id !== id || !stage.isConnected) return;
+        if (!mv) {
+          mv = document.createElement('model-viewer');
+          mv.className = 'art-model';
+          mv.alt = '';
+          mv.poster = poster || '';
+          mv.cameraControls = true;
+          mv.touchAction = 'none';
+          mv.interactionPrompt = 'none';
+          mv.orbitSensitivity = 1.5;
+          mv.minCameraOrbit = 'auto 0deg auto';
+          mv.maxCameraOrbit = 'auto 180deg auto';
+          mv.shadowIntensity = 0.55;
+          mv.cameraTarget = 'auto auto auto';
+          mv.cameraOrbit = '0deg 75deg auto';
+          mv.fieldOfView = 'auto';
+          mv.style.display = 'block';
+          mv.style.width = '100%';
+          mv.style.height = '280px';
+          mv.style.contain = 'none';
+          mv.style.transform = 'none';
+          if (!motionReduced()) {
+            mv.autoRotate = true;
+            mv.autoRotateDelay = 0;
+          }
+          mv.addEventListener('pointerdown', () => { mv.autoRotate = false; });
+          mv.addEventListener('load', () => {
+            const names = mv.availableAnimations || [];
+            if (names.length) {
+              const idle = names.find((n) => /idle|stand|wait|breath/i.test(n));
+              mv.animationName = idle || names[0];
+              if (!motionReduced()) {
+                try { mv.play(); } catch (e) {}
+              }
+            }
+          });
+          mv.addEventListener('error', fail);
+          stage.insertAdjacentElement('afterend', mv);
+        }
+        if (!mv.src) mv.src = MODEL_BASE + path;
+        mv.hidden = false;
+        ui.art.classList.add('is-3d');
+        tilt.hidden = true;
+      }).catch(fail);
+    }
+    toggle.addEventListener('click', () => {
+      if (mv && !mv.hidden) show2d();
+      else start3d();
+    });
+    loadBtn.addEventListener('click', start3d);
+    tools.append(toggle, loadBtn);
+    ui.art.append(tools);
+    if (big) {
+      toggle.hidden = true;
+      loadBtn.hidden = false;
+    } else {
+      loadBtn.hidden = true;
+      start3d();
+    }
+  });
+}
+
+function motionReduced() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function bindArtTilt(stage, tilt) {
+  if (motionReduced()) return;
+  let touchId = null;
+
+  function apply(x, y) {
+    if (tilt.hidden || ui.art.classList.contains('is-3d')) return;
+    const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const px = Math.max(-0.5, Math.min(0.5, (x - rect.left) / rect.width - 0.5));
+    const py = Math.max(-0.5, Math.min(0.5, (y - rect.top) / rect.height - 0.5));
+    const ry = px * 16;
+    const rx = -py * 12;
+    tilt.style.transform = 'rotateX(' + rx.toFixed(2) + 'deg) rotateY(' + ry.toFixed(2) + 'deg)';
+    tilt.style.setProperty('--shine-x', ((px + 0.5) * 100).toFixed(1) + '%');
+    tilt.style.setProperty('--shine-y', ((py + 0.5) * 100).toFixed(1) + '%');
+    tilt.style.filter = 'drop-shadow(' + (-ry * 0.55).toFixed(1) + 'px ' + (14 + rx * 0.35).toFixed(1) + 'px 14px rgba(90, 50, 120, 0.22))';
+  }
+  function rest() {
+    stage.classList.remove('is-tilting');
+    tilt.style.transform = '';
+    tilt.style.filter = '';
+  }
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    touchId = e.pointerId;
+    stage.classList.add('is-tilting');
+    apply(e.clientX, e.clientY);
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') {
+      if (touchId !== e.pointerId) return;
+      apply(e.clientX, e.clientY);
+      return;
+    }
+    stage.classList.add('is-tilting');
+    apply(e.clientX, e.clientY);
+  });
+  stage.addEventListener('pointerleave', (e) => {
+    if (e.pointerType === 'touch') return;
+    rest();
+  });
+  function endTouch(e) {
+    if (e.pointerType !== 'touch' || touchId !== e.pointerId) return;
+    touchId = null;
+    rest();
+  }
+  stage.addEventListener('pointerup', endTouch);
+  stage.addEventListener('pointercancel', endTouch);
+}
+
 function renderResult() {
   const r = state.result;
   const key = r ? [r.enD, r.zh, r.pinyin, r.img || '', r.emoji || '', r.ai ? 1 : 0, r.exEn || '', r.exZh || ''].join('\n') : '';
@@ -786,14 +1000,30 @@ function renderResult() {
     img.height = 160;
     img.decoding = 'async';
     img.src = r.img;
-    img.onerror = () => {
+    if (isPokemonResult(r) && r.id) attachPokeFallback(img, r.id);
+    else img.onerror = () => {
       if (r.sprite && img.src !== r.sprite) { img.src = r.sprite; return; }
       const emo = document.createElement('div');
       emo.className = 'art-emoji';
       emo.textContent = r.emoji || '⚡';
       img.replaceWith(emo);
     };
-    ui.art.append(img);
+    if (isPokemonResult(r)) {
+      const stage = document.createElement('div');
+      stage.className = 'art-stage';
+      const tilt = document.createElement('div');
+      tilt.className = 'art-tilt';
+      const shine = document.createElement('span');
+      shine.className = 'art-shine';
+      shine.setAttribute('aria-hidden', 'true');
+      tilt.append(img, shine);
+      stage.append(tilt);
+      ui.art.append(stage);
+      bindArtTilt(stage, tilt);
+      attachModel(stage, tilt, r.id, img.src);
+    } else {
+      ui.art.append(img);
+    }
   } else {
     const emo = document.createElement('div');
     emo.className = 'art-emoji';
@@ -917,7 +1147,8 @@ function evoStage(id, focus) {
   if (on) b.setAttribute('aria-current', 'true');
   b.setAttribute('aria-label', (zh ? zh + ' ' : '') + en);
   const img = document.createElement('img');
-  img.src = spriteUrl(id);
+  img.src = artUrl(id);
+  attachPokeFallback(img, id);
   img.alt = '';
   img.width = 46;
   img.height = 46;
@@ -1069,7 +1300,7 @@ function renderMatches() {
   if (key === matchKey) return;
   matchKey = key;
   const frag = document.createDocumentFragment();
-  for (const item of list) frag.append(pokeChip(item));
+  for (const item of list) frag.append(pokeChip(item, true));
   ui.matchGrid.replaceChildren(frag);
 }
 
@@ -1159,13 +1390,14 @@ function layoutPoke() {
   ui.pokeWindow.replaceChildren(frag);
 }
 
-function pokeChip(item) {
+function pokeChip(item, art) {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'poke-chip' + (item.exact ? ' is-exact' : '');
+  b.className = 'poke-chip' + (art ? ' is-art' : '') + (item.exact ? ' is-exact' : '');
   b.title = item.enD + (item.zh ? ' · ' + item.zh : '');
   const img = document.createElement('img');
-  img.src = spriteUrl(item.id);
+  img.src = art ? artUrl(item.id) : spriteUrl(item.id);
+  if (art) attachPokeFallback(img, item.id);
   img.alt = '';
   img.width = 50;
   img.height = 50;
@@ -1204,14 +1436,16 @@ async function loadJson(url) {
 
 const readyPromise = (async function loadData() {
   try {
-    const [w, p, d] = await Promise.all([
+    const [w, p, d, h] = await Promise.all([
       loadJson('words.json'),
       loadJson('pokemon.json'),
       loadJson('pokedex.json'),
+      loadJson('home.json').catch(() => ({ skip: [] })),
     ]);
     words = Array.isArray(w) ? w : [];
     curated = Array.isArray(p) ? p : [];
     pokedex = Array.isArray(d) ? d : [];
+    homeSkip = new Set((h && h.skip) || []);
     rebuild();
     ready = true;
     render();
