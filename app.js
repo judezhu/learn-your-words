@@ -100,11 +100,30 @@ let pokeKey = '';
 let wordKey = '';
 let suggestKey = '';
 
-function artUrl(id) {
+// home.json lists ids with no Pokémon HOME render. Everyone else uses the
+// 3D HOME artwork; a missing file falls back to the official art at runtime.
+let homeSkip = new Set();
+
+function officialUrl(id) {
   return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/' + id + '.png';
+}
+function homeUrl(id) {
+  return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/' + id + '.png';
+}
+function artUrl(id) {
+  if (homeSkip.has(id)) return officialUrl(id);
+  return homeUrl(id);
 }
 function spriteUrl(id) {
   return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/' + id + '.png';
+}
+function attachPokeFallback(img, id) {
+  img.onerror = () => {
+    const src = img.src || '';
+    if (src.indexOf('/home/') !== -1) { img.src = officialUrl(id); return; }
+    if (src.indexOf('/official-artwork/') !== -1) { img.src = spriteUrl(id); return; }
+    img.onerror = null;
+  };
 }
 function titleName(slug) {
   return String(slug || '').split('-').filter(Boolean).map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
@@ -264,6 +283,7 @@ function presentPokemon(rec, id) {
   }
   const cached = aiCache['poke_' + rec.id];
   if (cached && cached.img) {
+    cached.img = artUrl(rec.id);
     showEntry(cached);
     return;
   }
@@ -760,6 +780,59 @@ function render() {
   layoutPoke();
 }
 
+function motionReduced() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function bindArtTilt(stage, tilt) {
+  if (motionReduced()) return;
+  let touchId = null;
+
+  function apply(x, y) {
+    const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const px = Math.max(-0.5, Math.min(0.5, (x - rect.left) / rect.width - 0.5));
+    const py = Math.max(-0.5, Math.min(0.5, (y - rect.top) / rect.height - 0.5));
+    const ry = px * 16;
+    const rx = -py * 12;
+    tilt.style.transform = 'rotateX(' + rx.toFixed(2) + 'deg) rotateY(' + ry.toFixed(2) + 'deg)';
+    tilt.style.setProperty('--shine-x', ((px + 0.5) * 100).toFixed(1) + '%');
+    tilt.style.setProperty('--shine-y', ((py + 0.5) * 100).toFixed(1) + '%');
+    tilt.style.filter = 'drop-shadow(' + (-ry * 0.55).toFixed(1) + 'px ' + (14 + rx * 0.35).toFixed(1) + 'px 14px rgba(90, 50, 120, 0.22))';
+  }
+  function rest() {
+    stage.classList.remove('is-tilting');
+    tilt.style.transform = '';
+    tilt.style.filter = '';
+  }
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    touchId = e.pointerId;
+    stage.classList.add('is-tilting');
+    apply(e.clientX, e.clientY);
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') {
+      if (touchId !== e.pointerId) return;
+      apply(e.clientX, e.clientY);
+      return;
+    }
+    stage.classList.add('is-tilting');
+    apply(e.clientX, e.clientY);
+  });
+  stage.addEventListener('pointerleave', (e) => {
+    if (e.pointerType === 'touch') return;
+    rest();
+  });
+  function endTouch(e) {
+    if (e.pointerType !== 'touch' || touchId !== e.pointerId) return;
+    touchId = null;
+    rest();
+  }
+  stage.addEventListener('pointerup', endTouch);
+  stage.addEventListener('pointercancel', endTouch);
+}
+
 function renderResult() {
   const r = state.result;
   const key = r ? [r.enD, r.zh, r.pinyin, r.img || '', r.emoji || '', r.ai ? 1 : 0, r.exEn || '', r.exZh || ''].join('\n') : '';
@@ -786,14 +859,29 @@ function renderResult() {
     img.height = 160;
     img.decoding = 'async';
     img.src = r.img;
-    img.onerror = () => {
+    if (isPokemonResult(r) && r.id) attachPokeFallback(img, r.id);
+    else img.onerror = () => {
       if (r.sprite && img.src !== r.sprite) { img.src = r.sprite; return; }
       const emo = document.createElement('div');
       emo.className = 'art-emoji';
       emo.textContent = r.emoji || '⚡';
       img.replaceWith(emo);
     };
-    ui.art.append(img);
+    if (isPokemonResult(r)) {
+      const stage = document.createElement('div');
+      stage.className = 'art-stage';
+      const tilt = document.createElement('div');
+      tilt.className = 'art-tilt';
+      const shine = document.createElement('span');
+      shine.className = 'art-shine';
+      shine.setAttribute('aria-hidden', 'true');
+      tilt.append(img, shine);
+      stage.append(tilt);
+      ui.art.append(stage);
+      bindArtTilt(stage, tilt);
+    } else {
+      ui.art.append(img);
+    }
   } else {
     const emo = document.createElement('div');
     emo.className = 'art-emoji';
@@ -917,7 +1005,8 @@ function evoStage(id, focus) {
   if (on) b.setAttribute('aria-current', 'true');
   b.setAttribute('aria-label', (zh ? zh + ' ' : '') + en);
   const img = document.createElement('img');
-  img.src = spriteUrl(id);
+  img.src = artUrl(id);
+  attachPokeFallback(img, id);
   img.alt = '';
   img.width = 46;
   img.height = 46;
@@ -1069,7 +1158,7 @@ function renderMatches() {
   if (key === matchKey) return;
   matchKey = key;
   const frag = document.createDocumentFragment();
-  for (const item of list) frag.append(pokeChip(item));
+  for (const item of list) frag.append(pokeChip(item, true));
   ui.matchGrid.replaceChildren(frag);
 }
 
@@ -1159,13 +1248,14 @@ function layoutPoke() {
   ui.pokeWindow.replaceChildren(frag);
 }
 
-function pokeChip(item) {
+function pokeChip(item, art) {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'poke-chip' + (item.exact ? ' is-exact' : '');
+  b.className = 'poke-chip' + (art ? ' is-art' : '') + (item.exact ? ' is-exact' : '');
   b.title = item.enD + (item.zh ? ' · ' + item.zh : '');
   const img = document.createElement('img');
-  img.src = spriteUrl(item.id);
+  img.src = art ? artUrl(item.id) : spriteUrl(item.id);
+  if (art) attachPokeFallback(img, item.id);
   img.alt = '';
   img.width = 50;
   img.height = 50;
@@ -1204,14 +1294,16 @@ async function loadJson(url) {
 
 const readyPromise = (async function loadData() {
   try {
-    const [w, p, d] = await Promise.all([
+    const [w, p, d, h] = await Promise.all([
       loadJson('words.json'),
       loadJson('pokemon.json'),
       loadJson('pokedex.json'),
+      loadJson('home.json').catch(() => ({ skip: [] })),
     ]);
     words = Array.isArray(w) ? w : [];
     curated = Array.isArray(p) ? p : [];
     pokedex = Array.isArray(d) ? d : [];
+    homeSkip = new Set((h && h.skip) || []);
     rebuild();
     ready = true;
     render();

@@ -25,7 +25,10 @@ and pokemon_evolution.csv (the level, when it is a plain level-up, and the
 form-to-form rows for regional lines such as Alolan Vulpix or Galarian
 Meowth). Mega, Primal, and Gigantamax forms from pokemon.json are extra
 branches, marked with a tag code instead of a level. Names and sprites stay
-in pokemon.json. Pass --evolutions to refresh only that file.
+in pokemon.json. The same run also writes home.json: the Pokémon ids that
+have no Pokémon HOME 3D render, so the page can use that artwork and fall
+back to the official art for the rest. Pass --evolutions or --home to
+refresh just one of those files.
 
 Usage (from the repo root, needs network the first time):
 
@@ -49,6 +52,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "pokemon.json"
 EVO_OUT = ROOT / "evolutions.json"
+HOME_OUT = ROOT / "home.json"
 CACHE = Path("/tmp/poke-build")
 ART_CACHE = Path("/tmp/poke-art")
 ART_URL = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/{id}.png"
@@ -335,6 +339,45 @@ def load_curated_locks() -> dict[int, dict]:
     except Exception:
         data = json.loads((ROOT / "pokemon.json").read_text(encoding="utf-8"))
     return {p["id"]: p for p in data}
+
+
+def home_sprite_ids() -> set[int]:
+    """Ids that have a PNG in PokeAPI's pokemon/other/home sprite folder."""
+    req = urllib.request.Request(
+        "https://api.github.com/repos/PokeAPI/sprites/contents/sprites/pokemon/other?ref=master",
+        headers={"User-Agent": "LearnYourWords/1.0", "Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        listing = json.loads(resp.read().decode())
+    sha = next(item["sha"] for item in listing if item["name"] == "home")
+    req = urllib.request.Request(
+        "https://api.github.com/repos/PokeAPI/sprites/git/trees/" + sha,
+        headers={"User-Agent": "LearnYourWords/1.0", "Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        tree = json.loads(resp.read().decode())
+    ids: set[int] = set()
+    for node in tree.get("tree", []):
+        name = node.get("path") or ""
+        if name.endswith(".png") and name[:-4].isdigit():
+            ids.add(int(name[:-4]))
+    return ids
+
+
+def write_home(shipped: set[int] | None = None) -> None:
+    """Write home.json: ids in pokemon.json with no Pokémon HOME render.
+
+    Everyone else uses
+    sprites/pokemon/other/home/<id>.png. The page still falls back to the
+    official artwork if a HOME image 404s.
+    """
+    if shipped is None:
+        shipped = {int(p["id"]) for p in json.loads(OUT.read_text(encoding="utf-8"))}
+    have = home_sprite_ids()
+    skip = sorted(i for i in shipped if i not in have)
+    HOME_OUT.write_text(json.dumps({"skip": skip}) + "\n", encoding="utf-8")
+    print(f"wrote {HOME_OUT} home={len(shipped) - len(skip)} fallback={len(skip)}")
+    print("fallback ids:", ", ".join(str(i) for i in skip) or "(none)")
 
 
 def write_evolutions(shipped: set[int] | None = None) -> None:
@@ -891,12 +934,16 @@ def main() -> None:
     print(", ".join(str(i) for i in missing_art) or "(none)")
     print(f"\n== skipped forms ({len(skipped)}) ==")
     print("\n".join(skipped))
-    write_evolutions({e["id"] for e in entries})
+    shipped_ids = {e["id"] for e in entries}
+    write_evolutions(shipped_ids)
+    write_home(shipped_ids)
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--evolutions":
         ensure_csvs()
         write_evolutions()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--home":
+        write_home()
     else:
         main()
