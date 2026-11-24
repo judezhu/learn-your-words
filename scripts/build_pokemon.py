@@ -19,9 +19,17 @@ Other polyphonic characters are printed so a person can review them.
 Example sentences are original, written for a 7-year-old, and based on each
 Pokémon's types. A few well-known species mention a signature trait instead.
 
+The same run writes evolutions.json: one compact chain per family, ids only.
+It reads pokemon_species.csv (evolves_from_species_id, evolution_chain_id)
+and pokemon_evolution.csv (the level, when it is a plain level-up, and the
+form-to-form rows for regional lines such as Alolan Vulpix or Galarian
+Meowth). Names and sprites stay in pokemon.json. Pass --evolutions to refresh
+only that file.
+
 Usage (from the repo root, needs network the first time):
 
     python3 scripts/build_pokemon.py
+    python3 scripts/build_pokemon.py --evolutions
 
 CSVs are cached under /tmp/poke-build and artwork under /tmp/poke-art.
 """
@@ -39,18 +47,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "pokemon.json"
+EVO_OUT = ROOT / "evolutions.json"
 CACHE = Path("/tmp/poke-build")
 ART_CACHE = Path("/tmp/poke-art")
 ART_URL = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/{id}.png"
 CSV_BASE = "https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv/"
 CSV_FILES = [
     "pokemon.csv",
+    "pokemon_species.csv",
     "pokemon_species_names.csv",
     "pokemon_forms.csv",
     "pokemon_form_names.csv",
     "pokemon_types.csv",
     "type_names.csv",
+    "pokemon_evolution.csv",
 ]
+
+# Form identifiers that are a real regional line, not a costume or color.
+REGIONAL_MARKERS = ("-alola", "-galar", "-hisui", "-paldea")
 
 # Existing curated Chinese that is clearly behind the current official name.
 # Pinyin is regenerated for these.
@@ -322,6 +336,277 @@ def load_curated_locks() -> dict[int, dict]:
     return {p["id"]: p for p in data}
 
 
+def write_evolutions(shipped: set[int] | None = None) -> None:
+    """Write evolutions.json. Ids only; names and sprites come from pokemon.json.
+
+    Species links come from pokemon_species.csv (evolves_from_species_id and
+    evolution_chain_id). pokemon_evolution.csv supplies the level, when every
+    method for that step is a plain level-up, and the form rows that split a
+    regional line (Alolan Vulpix → Alolan Ninetales, Galarian Meowth →
+    Perrserker) off the base species chain.
+    """
+    if shipped is None:
+        shipped = {int(p["id"]) for p in json.loads(OUT.read_text(encoding="utf-8"))}
+    species_rows = read_csv("pokemon_species.csv")
+    evo_rows = read_csv("pokemon_evolution.csv")
+    forms = read_csv("pokemon_forms.csv")
+    pokemon = read_csv("pokemon.csv")
+
+    form_by_id = {int(f["id"]): f for f in forms}
+    species_of: dict[int, int] = {}
+    ident_of: dict[int, str] = {}
+    default_poke: dict[int, int] = {}
+    for row in pokemon:
+        pid = int(row["id"])
+        sid = int(row["species_id"])
+        species_of[pid] = sid
+        ident_of[pid] = row["identifier"]
+        if row["is_default"] == "1":
+            default_poke[sid] = pid
+    evolves_from: dict[int, int | None] = {}
+    chain_of: dict[int, int] = {}
+    for row in species_rows:
+        sid = int(row["id"])
+        parent = row["evolves_from_species_id"]
+        evolves_from[sid] = int(parent) if parent else None
+        chain_of[sid] = int(row["evolution_chain_id"]) if row["evolution_chain_id"] else 0
+
+    def is_regional(pid: int) -> bool:
+        ident = ident_of.get(pid, "")
+        return any(mark in ident for mark in REGIONAL_MARKERS)
+
+    def display_pokemon(form_id: str, species_fallback: int | None) -> int | None:
+        """Pokemon id we actually show. Costumes collapse to the base species."""
+        if form_id:
+            form = form_by_id.get(int(form_id))
+            if form is None:
+                return None
+            pid = int(form["pokemon_id"])
+            if pid in shipped and (pid <= 1025 or is_regional(pid)):
+                return pid
+            sid = species_of.get(pid)
+            if sid is None:
+                return None
+            base = default_poke.get(sid)
+            return base if base in shipped else None
+        if species_fallback is None:
+            return None
+        base = default_poke.get(species_fallback)
+        return base if base in shipped else None
+
+    # (from_id, to_id) -> list of (trigger id, level text)
+    methods: dict[tuple[int, int], list[tuple[str, str]]] = {}
+    skipped_chain = 0
+    for row in evo_rows:
+        to_species = int(row["evolved_species_id"])
+        parent_species = evolves_from.get(to_species)
+        to_poke = display_pokemon(row["evolved_pokemon_form_id"], to_species)
+        if row["required_pokemon_form_id"]:
+            form = form_by_id.get(int(row["required_pokemon_form_id"]))
+            from_species = species_of.get(int(form["pokemon_id"])) if form else None
+            from_poke = display_pokemon(row["required_pokemon_form_id"], None)
+        else:
+            from_species = parent_species
+            from_poke = display_pokemon("", parent_species)
+        if not from_poke or not to_poke or from_poke == to_poke:
+            continue
+        # A row that jumps families is not a chain we can draw.
+        if from_species and chain_of.get(from_species) != chain_of.get(to_species):
+            skipped_chain += 1
+            continue
+        methods.setdefault((from_poke, to_poke), []).append(
+            (row["evolution_trigger_id"], row["minimum_level"])
+        )
+
+    def edge_level(rows: list[tuple[str, str]]) -> int:
+        """Show a level only when every method is the same plain level-up."""
+        if any(trigger != "1" for trigger, _level in rows):
+            return 0
+        levels = []
+        for _trigger, level in rows:
+            if not level:
+                return 0
+            levels.append(int(level))
+        if len(set(levels)) != 1:
+            return 0
+        return levels[0]
+
+    children: dict[int, list[tuple[int, int]]] = {}
+    neighbors: dict[int, set[int]] = {}
+    for (src, dst), rows in methods.items():
+        level = edge_level(rows)
+        children.setdefault(src, []).append((dst, level))
+        neighbors.setdefault(src, set()).add(dst)
+        neighbors.setdefault(dst, set()).add(src)
+    for src in children:
+        children[src].sort()
+
+    seen: set[int] = set()
+    components: list[set[int]] = []
+    for start in sorted(neighbors):
+        if start in seen:
+            continue
+        stack = [start]
+        group: set[int] = set()
+        while stack:
+            node = stack.pop()
+            if node in group:
+                continue
+            group.add(node)
+            seen.add(node)
+            stack.extend(neighbors.get(node, ()))
+        if len(group) >= 2:
+            components.append(group)
+
+    def paths_from(root: int, group: set[int]) -> tuple[list[list[int]], list[list[int]]]:
+        branches: list[list[int]] = []
+        levels: list[list[int]] = []
+
+        def walk(node: int, path: list[int], lvls: list[int]) -> None:
+            nxt = [(dst, level) for dst, level in children.get(node, []) if dst in group and dst not in path]
+            if not nxt:
+                branches.append(path[:])
+                levels.append(lvls[:])
+                return
+            for dst, level in nxt:
+                path.append(dst)
+                lvls.append(level)
+                walk(dst, path, lvls)
+                path.pop()
+                lvls.pop()
+
+        walk(root, [root], [0])
+        order = sorted(range(len(branches)), key=lambda i: branches[i])
+        return [branches[i] for i in order], [levels[i] for i in order]
+
+    chains: dict[str, list[list[int]]] = {}
+    level_map: dict[str, list[list[int]]] = {}
+    node_root: dict[int, str] = {}
+    for group in components:
+        roots = sorted(n for n in group if not any(
+            dst == n and src in group for src, kids in children.items() for dst, _level in kids
+        ))
+        if not roots:
+            roots = [min(group)]
+        all_branches: list[list[int]] = []
+        all_levels: list[list[int]] = []
+        for root in roots:
+            branches, levels = paths_from(root, group)
+            all_branches.extend(branches)
+            all_levels.extend(levels)
+        key = str(min(roots))
+        chains[key] = all_branches
+        if any(level for row in all_levels for level in row):
+            level_map[key] = all_levels
+        for node in group:
+            node_root[node] = key
+
+    # Forms that are not themselves a link (Mega, Gigantamax, costumes) use
+    # the base species chain, and the card highlights that species.
+    member_of: dict[str, int] = {}
+    highlight: dict[str, int] = {}
+    for pid, root in node_root.items():
+        if str(pid) == root:
+            continue
+        member_of[str(pid)] = int(root)
+    for pid in sorted(shipped):
+        if pid in node_root:
+            continue
+        if pid <= 1025:
+            continue
+        sid = species_of.get(pid)
+        if sid is None or sid not in node_root:
+            continue
+        member_of[str(pid)] = int(node_root[sid])
+        highlight[str(pid)] = sid
+
+    def block(title: str, obj: dict) -> list[str]:
+        lines = [f'  "{title}": {{']
+        items = sorted(obj.items(), key=lambda kv: int(kv[0]))
+        for i, (key, value) in enumerate(items):
+            comma = "," if i < len(items) - 1 else ""
+            lines.append(f"    {json.dumps(str(key))}: {json.dumps(value, separators=(',', ':'))}{comma}")
+        lines.append("  }")
+        return lines
+
+    parts = ["{"]
+    chunks = [("b", chains)]
+    if level_map:
+        chunks.append(("l", level_map))
+    if member_of:
+        chunks.append(("m", member_of))
+    if highlight:
+        chunks.append(("h", highlight))
+    for i, (title, obj) in enumerate(chunks):
+        block_lines = block(title, obj)
+        if i < len(chunks) - 1:
+            block_lines[-1] += ","
+        parts.extend(block_lines)
+    parts.append("}")
+    parts.append("")
+    text = "\n".join(parts)
+    EVO_OUT.write_text(text, encoding="utf-8")
+
+    def chain_for(pid: int) -> list[list[int]] | None:
+        root = node_root.get(pid)
+        if root is None and pid > 1025:
+            sid = species_of.get(pid)
+            root = node_root.get(sid) if sid else None
+        if root is None:
+            return None
+        return chains.get(root)
+
+    samples = {
+        1: "Bulbasaur",
+        25: "Pikachu",
+        20: "Raticate",
+        128: "Tauros",
+        133: "Eevee",
+        43: "Oddish",
+        60: "Poliwag",
+        236: "Tyrogue",
+        265: "Wurmple",
+        79: "Slowpoke",
+        10103: "Alolan Vulpix",
+        10161: "Galarian Meowth",
+        10164: "Galarian Slowpoke",
+        10092: "Alolan Raticate",
+        10100: "Alolan Raichu",
+        10034: "Mega Charizard X",
+        10250: "Paldean Tauros",
+    }
+    print(f"wrote {EVO_OUT} bytes={EVO_OUT.stat().st_size} chains={len(chains)} edges={len(methods)} skipped_chain={skipped_chain}")
+    for pid, label in samples.items():
+        got = chain_for(pid)
+        focus = highlight.get(str(pid), pid)
+        print(f"  {label} ({pid}) focus={focus} {got}")
+
+    problems = []
+    bulba = chain_for(1)
+    if bulba != [[1, 2, 3]] or level_map.get("1") != [[0, 16, 32]]:
+        problems.append(f"Bulbasaur {bulba} levels {level_map.get('1')}")
+    eevee = chain_for(133) or []
+    eevee_ids = {path[-1] for path in eevee}
+    if not {134, 135, 136, 196, 197, 470, 471, 700} <= eevee_ids:
+        problems.append(f"Eevee missing evolutions {eevee}")
+    if chain_for(128) is not None or chain_for(10250) is not None:
+        problems.append("Tauros should be single-stage")
+    if chain_for(10103) != [[10103, 10104]]:
+        problems.append(f"Alolan Vulpix {chain_for(10103)}")
+    meow = chain_for(10161) or []
+    if not any(863 in path for path in meow) or any(53 in path for path in meow):
+        problems.append(f"Galarian Meowth {meow}")
+    if chain_for(20) != [[19, 20]]:
+        problems.append(f"Raticate {chain_for(20)}")
+    pika = chain_for(25) or []
+    if not any(path[:3] == [172, 25, 26] or path == [172, 25, 26] for path in pika):
+        problems.append(f"Pikachu {pika}")
+    if highlight.get("10034") != 6:
+        problems.append(f"Mega Charizard highlight {highlight.get('10034')}")
+    if problems:
+        raise SystemExit("evolution checks failed:\n" + "\n".join(problems))
+
+
 def main() -> None:
     ensure_csvs()
     setup_pinyin()
@@ -525,7 +810,12 @@ def main() -> None:
     print(", ".join(str(i) for i in missing_art) or "(none)")
     print(f"\n== skipped forms ({len(skipped)}) ==")
     print("\n".join(skipped))
+    write_evolutions({e["id"] for e in entries})
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "--evolutions":
+        ensure_csvs()
+        write_evolutions()
+    else:
+        main()

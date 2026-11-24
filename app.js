@@ -1,6 +1,7 @@
 // Learn Your Words — plain static app.
 // Data: words.json (hand-edited), pokemon.json (curated, with pinyin),
-// pokedex.json (national dex: PokéAPI slug + official zh-Hans).
+// pokedex.json (national dex: PokéAPI slug + official zh-Hans),
+// evolutions.json (lazy, ids only; built by scripts/build_pokemon.py).
 
 const HOME_WORDS = ['cat', 'dog', 'apple', 'panda', 'ice cream', 'dragon', 'star', 'flower', 'rabbit', 'banana', 'heart', 'duck'];
 const PROXY_URL = '/api/lookup';
@@ -30,6 +31,7 @@ const ui = {
   zhLine: $('zh-line'),
   zh: $('result-zh'),
   py: $('result-py'),
+  evo: $('result-evo'),
   signRow: $('result-sign'),
   signLabel: $('sign-label'),
   ex: $('result-ex'),
@@ -662,7 +664,10 @@ function closeSign() {
 
 function setCat(cat) {
   state.cat = cat;
-  if (cat === 'pokemon') refreshLive();
+  if (cat === 'pokemon') {
+    refreshLive();
+    ensureEvo();
+  }
   render();
 }
 
@@ -725,6 +730,7 @@ function render() {
   ui.service.hidden = !state.serviceError;
 
   renderResult();
+  renderEvo();
   renderSign();
   renderMatches();
 
@@ -794,6 +800,187 @@ function renderResult() {
   ui.ex.hidden = !hasEx;
   ui.exEn.textContent = r.exEn || '';
   ui.exZh.textContent = r.exZh || '';
+}
+
+// evolutions.json is ids only. b = branches per family, l = level-up numbers,
+// m = other pokemon that share a family, h = species to highlight for a form.
+let evoData = null;
+let evoPromise = null;
+let evoFailed = false;
+let evoKey = '';
+
+function ensureEvo() {
+  if (evoData) return Promise.resolve(evoData);
+  if (evoFailed) return Promise.resolve(null);
+  if (!evoPromise) {
+    evoPromise = loadJson('evolutions.json').then((d) => {
+      evoData = d;
+      return d;
+    }).catch((e) => {
+      console.error(e);
+      evoFailed = true;
+      evoPromise = null;
+      return null;
+    });
+  }
+  return evoPromise;
+}
+
+function evoChain(id) {
+  if (!evoData || !evoData.b) return null;
+  const own = evoData.b[String(id)];
+  const root = own ? String(id) : (evoData.m && evoData.m[String(id)] != null ? String(evoData.m[String(id)]) : '');
+  const branches = root && evoData.b[root];
+  if (!branches || !branches.length) return null;
+  const focus = (evoData.h && evoData.h[String(id)] != null) ? evoData.h[String(id)] : id;
+  return { branches: branches, levels: (evoData.l && evoData.l[root]) || null, focus: focus };
+}
+
+function evoTree(branches, levels) {
+  const root = { id: branches[0][0], lv: 0, kids: new Map() };
+  for (let p = 0; p < branches.length; p++) {
+    const path = branches[p];
+    const lv = levels ? levels[p] : null;
+    let node = root;
+    for (let i = 1; i < path.length; i++) {
+      const cid = path[i];
+      let child = node.kids.get(cid);
+      if (!child) {
+        child = { id: cid, lv: lv ? (lv[i] || 0) : 0, kids: new Map() };
+        node.kids.set(cid, child);
+      }
+      node = child;
+    }
+  }
+  return root;
+}
+
+function evoArrow(level, down) {
+  const s = document.createElement('span');
+  s.className = 'evo-arrow' + (down ? ' is-down' : '');
+  s.setAttribute('aria-hidden', 'true');
+  const mark = document.createElement('i');
+  s.append(mark);
+  if (level) {
+    const lv = document.createElement('small');
+    lv.textContent = 'Lv.' + level;
+    s.append(lv);
+  }
+  return s;
+}
+
+function openEvolution(id) {
+  const row = curatedById.get(id);
+  if (!row || (state.result && state.result.id === id)) return;
+  state.query = row.en;
+  const req = claim();
+  presentPokemon({ id: row.id, enD: row.en, zh: row.zh }, req);
+}
+
+function evoStage(id, focus) {
+  const row = curatedById.get(id);
+  const en = row ? row.en : String(id);
+  const zh = row ? (row.zh || '') : '';
+  const on = id === focus;
+  const b = document.createElement(on ? 'div' : 'button');
+  if (!on) b.type = 'button';
+  b.className = 'evo-stage' + (on ? ' is-current' : '');
+  if (on) b.setAttribute('aria-current', 'true');
+  b.setAttribute('aria-label', (zh ? zh + ' ' : '') + en);
+  const img = document.createElement('img');
+  img.src = spriteUrl(id);
+  img.alt = '';
+  img.width = 46;
+  img.height = 46;
+  img.decoding = 'async';
+  const zhEl = document.createElement('span');
+  zhEl.className = 'zh';
+  zhEl.textContent = zh;
+  const enEl = document.createElement('span');
+  enEl.className = 'en';
+  enEl.textContent = en;
+  b.append(img, zhEl, enEl);
+  if (!on) b.addEventListener('click', () => openEvolution(id));
+  return b;
+}
+
+function evoLine(node, focus) {
+  const line = document.createElement('div');
+  line.className = 'evo-line';
+  line.append(evoStage(node.id, focus));
+  const kids = [...node.kids.values()];
+  if (!kids.length) return line;
+  if (kids.length === 1) {
+    line.append(evoArrow(kids[0].lv, false));
+    const rest = evoLine(kids[0], focus);
+    while (rest.firstChild) {
+      const child = rest.firstChild;
+      // A fan of final evolutions belongs to the previous stage, not the
+      // whole row. Stack those with sideways arrows so they don't sit under
+      // an earlier Pokémon.
+      if (child.classList && child.classList.contains('evo-fork') && !child.classList.contains('is-deep')) {
+        child.classList.add('is-deep');
+        for (const arrow of child.querySelectorAll('.evo-arrow')) arrow.classList.remove('is-down');
+      }
+      line.append(child);
+    }
+    return line;
+  }
+  const deep = kids.some((k) => k.kids.size);
+  const fork = document.createElement('div');
+  fork.className = 'evo-fork' + (deep ? ' is-deep' : '');
+  for (const kid of kids) {
+    if (deep) {
+      const sub = evoLine(kid, focus);
+      sub.prepend(evoArrow(kid.lv, false));
+      fork.append(sub);
+    } else {
+      const leaf = document.createElement('div');
+      leaf.className = 'evo-leaf';
+      leaf.append(evoArrow(kid.lv, true), evoStage(kid.id, focus));
+      fork.append(leaf);
+    }
+  }
+  line.append(fork);
+  return line;
+}
+
+function renderEvo() {
+  const r = state.result;
+  if (!r || !isPokemonResult(r)) {
+    ui.evo.hidden = true;
+    if (evoKey) ui.evo.replaceChildren();
+    evoKey = '';
+    return;
+  }
+  if (!evoData) {
+    ui.evo.hidden = true;
+    if (!evoFailed) {
+      const id = r.id;
+      ensureEvo().then(() => {
+        if (state.result && state.result.id === id) renderEvo();
+      });
+    }
+    return;
+  }
+  const key = String(r.id);
+  if (key === evoKey) return;
+  evoKey = key;
+  ui.evo.replaceChildren();
+  const label = document.createElement('div');
+  label.className = 'evo-label';
+  label.textContent = '进化 · Evolution';
+  ui.evo.append(label);
+  const chain = evoChain(r.id);
+  if (!chain) {
+    const none = document.createElement('p');
+    none.className = 'evo-none';
+    none.textContent = "不会进化 · Doesn't evolve";
+    ui.evo.append(none);
+  } else {
+    ui.evo.append(evoLine(evoTree(chain.branches, chain.levels), chain.focus));
+  }
+  ui.evo.hidden = false;
 }
 
 function renderSign() {

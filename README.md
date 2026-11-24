@@ -15,12 +15,13 @@ The site is static files. [Cloudflare Pages](https://learn-your-words.pages.dev)
 | `app.js` | Search, speech, microphone, Pokémon, sign videos |
 | `words.json` | The word list. Edit this to add or change words. |
 | `pokemon.json` | Curated Pokémon (English, 中文, pinyin). Edit this for the names you want to show with a ready-made pinyin. |
+| `evolutions.json` | Evolution chains for the Pokémon cards. Pokémon ids only, built by `scripts/build_pokemon.py`, loaded when a card opens. |
 | `pokedex.json` | All 1,025 national-dex Pokémon: PokéAPI slug + official Simplified Chinese. Search uses this so names outside `pokemon.json` still open a Pokémon card. |
 | `fonts/` | Fredoka, latin and latin-ext only (for pinyin tone marks). Chinese text uses the phone or computer's own font. |
 | `functions/api/lookup.js` | AI lookup. The Anthropic key stays in the `ANTHROPIC_KEY` secret. |
 | `functions/api/sign.js` | Looks up a whole-word sign video on signasl.org. |
 
-`words.json` 是单词表，改词就改这个文件。`pokemon.json` 是精选宝可梦（含拼音）。`pokedex.json` 是全国图鉴 1025 只的英文名和官方简体中文名，用来让搜索认出精选名单以外的宝可梦。中文显示用系统字体，不再把整套字体打进页面。
+`words.json` 是单词表，改词就改这个文件。`pokemon.json` 是精选宝可梦（含拼音）。`evolutions.json` 是进化链（只有编号）。`pokedex.json` 是全国图鉴 1025 只的英文名和官方简体中文名，用来让搜索认出精选名单以外的宝可梦。中文显示用系统字体，不再把整套字体打进页面。
 
 ## Edit words · 改单词
 
@@ -66,11 +67,16 @@ Rebuild it (needs network the first time) with:
 
 ```bash
 python3 scripts/build_pokemon.py
+python3 scripts/build_pokemon.py --evolutions
 ```
 
 The script reads PokéAPI's CSVs. It keeps hand-written names and pinyin from `master`'s `pokemon.json` unless a name is clearly out of date. New pinyin comes from pypinyin. 52poke is the preferred check for mainland names; the script falls back to PokéAPI zh-Hans when that wiki cannot be fetched. Forms that reuse the base artwork (totems, size variants, and similar) are skipped and listed.
 
 脚本读取 PokéAPI 的 CSV。`master` 里已经手写过的名字和拼音会保留，只有明显过时的才会改。新拼音来自 pypinyin。简体名优先对照 52poke；抓不到那个 wiki 时用 PokéAPI 的简体名。和图鉴基础形态用同一张官方图的形态（图腾、只是大小不同等）会被跳过，并在脚本输出里列出来。
+
+The same run writes `evolutions.json`. Chains come from `pokemon_species.csv` (`evolves_from_species_id`, `evolution_chain_id`) and `pokemon_evolution.csv`. The file stores Pokémon ids only, one family at a time, plus a level when that step is a plain level-up. Regional forms use their own line when PokéAPI has one (Alolan Vulpix → Alolan Ninetales, Galarian Meowth → Perrserker). Mega, Gigantamax, and other costumes point at the base species chain. `--evolutions` rewrites just this file. The page loads it the first time a Pokémon card opens, not with the word list.
+
+同一次运行还会写出 `evolutions.json`。进化链来自 `pokemon_species.csv`（`evolves_from_species_id`、`evolution_chain_id`）和 `pokemon_evolution.csv`。文件只存宝可梦编号，按家族分组；这一步如果是普通升级，会带上等级。地区形态在 PokéAPI 有单独数据时走自己的链（阿罗拉六尾 → 阿罗拉九尾，伽勒尔喵喵 → 喵头目）。超级进化、超极巨化和别的服装形态指向基础种类的进化链。`--evolutions` 只重写这一个文件。页面在第一次打开宝可梦卡片时才加载它，不跟单词表一起下载。
 
 Searching checks this file and `pokedex.json` (English, ignoring spaces and punctuation, and Simplified Chinese). One match opens that card. Several matches — `pikachu`, `皮卡丘`, `charizard`, `喷火龙` — show every form as a tappable sprite, with an exact name highlighted first. A normal word such as `cat` still opens the word card. `pokedex.json` is only the English slug index for the live dex; refresh it after a new generation with:
 
