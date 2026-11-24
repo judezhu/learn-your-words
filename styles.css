@@ -295,6 +295,165 @@ img { max-width: 100%; }
   font-weight: 600;
   margin-top: 4px;
 }
+.evo {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--divider);
+}
+.evo-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sub);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.evo-none {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sub);
+}
+.evo-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px 0;
+  width: 100%;
+}
+.evo-fork {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px 4px;
+  width: 100%;
+  flex: 1 1 100%;
+  margin-top: 4px;
+}
+.evo-fork.is-deep {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.evo-fork.is-deep .evo-line { width: auto; }
+.evo-fork.is-deep .evo-fork {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 0;
+  gap: 2px;
+}
+.evo-fork.is-deep .evo-fork .evo-leaf { flex-direction: row; }
+.evo-fork.is-deep .evo-fork .evo-arrow.is-down i { transform: rotate(45deg); }
+.evo-leaf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.evo-fork:not(.is-deep) .evo-leaf {
+  flex-direction: column;
+}
+.evo-arrow {
+  width: auto;
+  min-width: 22px;
+  max-width: 72px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+.evo-tag {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.evo-arrow small.evo-tag { color: #fff; line-height: 1.2; }
+.evo-tag.is-mega { background: var(--accent); }
+.evo-tag.is-gmax { background: #7a5af5; }
+.evo-tag.is-primal { background: #f08a24; }
+.evo-arrow i {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-top: 3px solid var(--accent);
+  border-right: 3px solid var(--accent);
+  transform: rotate(45deg);
+}
+.evo-arrow.is-down i {
+  transform: rotate(135deg);
+}
+.evo-arrow small {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent-2);
+  letter-spacing: 0;
+  line-height: 1;
+}
+.evo-stage {
+  width: 74px;
+  flex: none;
+  max-width: 100%;
+  border: 2px solid transparent;
+  background: transparent;
+  border-radius: 16px;
+  padding: 2px 2px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: none;
+}
+.evo-stage img {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+}
+.evo-stage .zh {
+  font-family: var(--cjk);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  max-width: 70px;
+}
+.evo-stage .en {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sub);
+  line-height: 1.2;
+  text-align: center;
+  max-width: 70px;
+}
+.evo-stage.is-current {
+  background: var(--chip);
+  border-color: var(--accent);
+  cursor: default;
+}
+.evo-stage:focus-visible {
+  outline: 3px solid var(--accent-2);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .evo-stage:not(.is-current):hover { background: #fff8fb; transform: translateY(-2px); }
+}
 .speak {
   cursor: pointer;
   border: none;
