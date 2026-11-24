@@ -138,8 +138,8 @@ function toRich(p) {
     emoji: '',
     img: artUrl(p.id),
     sprite: spriteUrl(p.id),
-    exEn: p.en + ' is a Pokémon! Gotta catch it!',
-    exZh: (p.zh || '') + '是一只宝可梦！',
+    exEn: p.exEn || (p.en + ' is a Pokémon! Gotta catch it!'),
+    exZh: p.exZh || ((p.zh || '') + '是一只宝可梦！'),
   };
 }
 

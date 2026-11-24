@@ -56,13 +56,25 @@ The twelve words on the home screen are chosen in `app.js` (`HOME_WORDS`).
 {"id": 25, "en": "Pikachu", "zh": "皮卡丘", "pinyin": "pí kǎ qiū"}
 ```
 
-`id` is the PokéAPI number. Forms and costumes use ids above 10000 (Alolan, Mega, Gigantamax, and so on). A curated row wins over `pokedex.json`: it supplies pinyin and the name on the card, and it opens immediately without an extra lookup.
+`id` is the PokéAPI number. `pokemon.json` is the full curated list: national species 1–1025 plus alternate forms whose id is above 10000 and whose official artwork is different from the base species. Each row has `exEn` and `exZh`, a short example sentence. The app uses those sentences, and falls back to a generic line only if they are missing.
 
-`id` 是 PokéAPI 编号。特殊形态（阿罗拉、Mega、超极巨化等）用大于 10000 的编号。精选名单优先于 `pokedex.json`：有拼音，点开不用再查。
+`id` 是 PokéAPI 编号。`pokemon.json` 是完整名单：全国图鉴 1–1025，再加上编号大于 10000、而且官方图和基础形态不一样的特殊形态。每条有 `exEn` 和 `exZh` 例句。页面优先用这两句；没有的话才用原来的通用句子。
 
-Searching checks curated Pokémon and the full national dex (English, ignoring spaces and punctuation, and Simplified Chinese). One match opens that card. Several matches — `pikachu`, `皮卡丘`, `charizard`, `喷火龙` — show every form as a tappable sprite, with an exact name highlighted first. A normal word such as `cat` still opens the word card. Lucario / 路卡利欧 is not curated; that single match still opens the same artwork card as a tap in the dex. To refresh `pokedex.json` after a new generation:
+Rebuild it (needs network the first time) with:
 
-搜索会对照精选宝可梦和全国图鉴（英文不区分大小写，忽略空格和标点；中文用简体）。只命中一只就打开卡片。命中多只时（比如 pikachu、皮卡丘、charizard、喷火龙）会把每一种形态都画成可以点的小图，完全同名的排在最前面并高亮。普通单词（比如 cat）仍然打开单词卡。路卡利欧不在精选名单里，只命中它一只时，会打开和图鉴里点按相同的卡片。更新图鉴可以重新生成 `pokedex.json`：
+重新生成（第一次需要联网）：
+
+```bash
+python3 scripts/build_pokemon.py
+```
+
+The script reads PokéAPI's CSVs. It keeps hand-written names and pinyin from `master`'s `pokemon.json` unless a name is clearly out of date. New pinyin comes from pypinyin. 52poke is the preferred check for mainland names; the script falls back to PokéAPI zh-Hans when that wiki cannot be fetched. Forms that reuse the base artwork (totems, size variants, and similar) are skipped and listed.
+
+脚本读取 PokéAPI 的 CSV。`master` 里已经手写过的名字和拼音会保留，只有明显过时的才会改。新拼音来自 pypinyin。简体名优先对照 52poke；抓不到那个 wiki 时用 PokéAPI 的简体名。和图鉴基础形态用同一张官方图的形态（图腾、只是大小不同等）会被跳过，并在脚本输出里列出来。
+
+Searching checks this file and `pokedex.json` (English, ignoring spaces and punctuation, and Simplified Chinese). One match opens that card. Several matches — `pikachu`, `皮卡丘`, `charizard`, `喷火龙` — show every form as a tappable sprite, with an exact name highlighted first. A normal word such as `cat` still opens the word card. `pokedex.json` is only the English slug index for the live dex; refresh it after a new generation with:
+
+搜索会对照这个文件和 `pokedex.json`（英文不区分大小写，忽略空格和标点；中文用简体）。只命中一只就打开卡片。命中多只时（比如 pikachu、皮卡丘、charizard、喷火龙）会把每一种形态都画成可以点的小图，完全同名的排在最前面并高亮。普通单词（比如 cat）仍然打开单词卡。`pokedex.json` 只是图鉴用的英文 slug 索引；新世代可以这样更新它：
 
 ```bash
 curl -o /tmp/poke.json "https://pokeapi.co/api/v2/pokemon?limit=1025"
