@@ -64,7 +64,7 @@ const state = {
   result: null,
   matches: [],
   recording: false,
-  micLang: 'en',
+  micLang: 'zh',
   notFound: false,
   serviceError: false,
   cat: 'words',
@@ -735,13 +735,13 @@ function showHome() {
 }
 
 function homeLabel() {
-  if (state.cat !== 'pokemon') return '✨ Word friends to explore';
+  if (state.cat !== 'pokemon') return '✨ 去认识的单词朋友';
   const baseCount = (liveList && liveList.length) || (pokedex && pokedex.length) || 0;
   if (!baseCount) {
-    if (state.pokeErr) return '⚡ Pokémon (离线名单)';
-    return '⚡ Loading all Pokémon… ✨';
+    if (state.pokeErr) return '⚡ 宝可梦（离线名单）';
+    return '⚡ 宝可梦加载中…';
   }
-  return '⚡ ' + baseCount + ' 只宝可梦 — tap one!';
+  return '⚡ ' + baseCount + ' 只宝可梦 — 点一只！';
 }
 
 function render() {
@@ -749,9 +749,9 @@ function render() {
 
   if (ui.q.value !== state.query) ui.q.value = state.query;
   ui.clear.hidden = !state.query;
-  ui.q.placeholder = 'Type a word, press Enter';
-  ui.title.textContent = 'Learn Your Words';
-  ui.sub.textContent = 'Tap a friend or search!';
+  ui.q.placeholder = '输入单词，按回车';
+  ui.title.textContent = '学单词';
+  ui.sub.textContent = '点一个朋友，或搜一搜！';
   ui.emoji.textContent = '🐾';
 
   ui.mic.classList.toggle('rec', state.recording);
@@ -1033,7 +1033,7 @@ function renderResult() {
 
   const word = signWordOf(r);
   ui.signRow.hidden = !word;
-  if (word) ui.signLabel.textContent = 'See the sign for "' + (r.enD || r.en) + '"';
+  if (word) ui.signLabel.textContent = '看手语 · See the sign for "' + (r.enD || r.en) + '"';
   if (!word && state.signOpen) {
     state.signOpen = false;
     state.signVideo = null;
@@ -1229,13 +1229,20 @@ function renderEvo() {
   ui.evo.replaceChildren();
   const label = document.createElement('div');
   label.className = 'evo-label';
-  label.textContent = '进化 · Evolution';
+  label.replaceChildren();
+  const labelZh = document.createElement('span');
+  labelZh.className = 'label-zh';
+  labelZh.textContent = '进化';
+  label.append(labelZh, ' · Evolution');
   ui.evo.append(label);
   const chain = evoChain(r.id);
   if (!chain) {
     const none = document.createElement('p');
     none.className = 'evo-none';
-    none.textContent = "不会进化 · Doesn't evolve";
+    const noneZh = document.createElement('span');
+    noneZh.className = 'label-zh';
+    noneZh.textContent = '不会进化';
+    none.append(noneZh, " · Doesn't evolve");
     ui.evo.append(none);
   } else {
     ui.evo.append(evoLine(evoTree(chain.branches, chain.levels), chain.focus));
@@ -1254,7 +1261,7 @@ function renderSign() {
   const word = signWordOf(r);
   const page = word ? signPage(word) : 'https://www.signasl.org/';
   const key = [state.signLoading ? 1 : 0, state.signVideo || '', state.signEmbed || '', word].join('|');
-  ui.signTitle.textContent = 'Sign for "' + ((r && (r.enD || r.en)) || '') + '"';
+  ui.signTitle.textContent = '手语 · Sign for "' + ((r && (r.enD || r.en)) || '') + '"';
   ui.signOpen.href = page;
   if (key === signKey) return;
   signKey = key;
@@ -1295,7 +1302,7 @@ function renderMatches() {
     return;
   }
   const n = list.length;
-  ui.matchLabel.textContent = '找到 ' + n + ' 只 — tap one!';
+  ui.matchLabel.textContent = '找到 ' + n + ' 只 — 点一只！';
   const key = list.map((s) => s.id + (s.exact ? '!' : '')).join(',');
   if (key === matchKey) return;
   matchKey = key;
@@ -1314,13 +1321,14 @@ function wordChip(w, pill) {
   const en = document.createElement('span');
   en.className = pill ? '' : 'en';
   en.textContent = w.enD || w.en;
-  b.append(emo, en);
-  if (!pill) {
+  b.append(emo);
+  if (w.zh) {
     const zh = document.createElement('span');
     zh.className = 'zh';
-    zh.textContent = w.zh || '';
+    zh.textContent = w.zh;
     b.append(zh);
   }
+  b.append(en);
   b.addEventListener('click', () => pickWord(w));
   return b;
 }
@@ -1394,7 +1402,7 @@ function pokeChip(item, art) {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'poke-chip' + (art ? ' is-art' : '') + (item.exact ? ' is-exact' : '');
-  b.title = item.enD + (item.zh ? ' · ' + item.zh : '');
+  b.title = (item.zh ? item.zh + ' · ' : '') + item.enD;
   const img = document.createElement('img');
   img.src = art ? artUrl(item.id) : spriteUrl(item.id);
   if (art) attachPokeFallback(img, item.id);
@@ -1408,7 +1416,7 @@ function pokeChip(item, art) {
   const zh = document.createElement('span');
   zh.className = 'zh';
   zh.textContent = item.zh || '';
-  b.append(img, en, zh);
+  b.append(img, zh, en);
   b.addEventListener('click', () => pickFromDex(item));
   return b;
 }
