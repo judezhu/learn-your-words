@@ -1,8 +1,8 @@
 # Learn Your Words · 学单词
 
-A picture dictionary for kids about 7–8 years old. Search an English word, a Chinese word, or pinyin and see both languages, an example sentence, and a button that speaks the word. There is a kid theme and a grown-up theme, a microphone search, sign-language videos, and a Pokémon dex.
+A picture dictionary for kids about 7–8 years old. Search an English word, a Chinese word, or pinyin and see both languages, an example sentence, and a button that speaks the word. It opens in the colorful kid theme, with microphone search, sign-language videos, and a Pokémon dex.
 
-给 7–8 岁孩子用的图解词典。可以搜英文、中文或拼音，看到两种语言、例句，以及朗读按钮。有儿童 / 成人两套外观、麦克风搜索、手语视频，还有宝可梦图鉴。
+给 7–8 岁孩子用的图解词典。可以搜英文、中文或拼音，看到两种语言、例句，以及朗读按钮。打开就是彩色的儿童主题，还有麦克风搜索、手语视频和宝可梦图鉴。
 
 The site is static files. [Cloudflare Pages](https://learn-your-words.pages.dev) serves them and runs the two functions in `functions/`. Production deploys from `master`.
 
@@ -11,12 +11,12 @@ The site is static files. [Cloudflare Pages](https://learn-your-words.pages.dev)
 | File | What it is |
 | --- | --- |
 | `index.html` | Page structure |
-| `styles.css` | Kid and adult themes, and the small vendored fonts |
+| `styles.css` | Kid theme and the small vendored fonts |
 | `app.js` | Search, speech, microphone, Pokémon, sign videos |
 | `words.json` | The word list. Edit this to add or change words. |
 | `pokemon.json` | Curated Pokémon (English, 中文, pinyin). Edit this for the names you want to show with a ready-made pinyin. |
 | `pokedex.json` | All 1,025 national-dex Pokémon: PokéAPI slug + official Simplified Chinese. Search uses this so names outside `pokemon.json` still open a Pokémon card. |
-| `fonts/` | Fredoka and IBM Plex Sans, latin and latin-ext only (for pinyin tone marks). Chinese text uses the phone or computer's own font. |
+| `fonts/` | Fredoka, latin and latin-ext only (for pinyin tone marks). Chinese text uses the phone or computer's own font. |
 | `functions/api/lookup.js` | AI lookup. The Anthropic key stays in the `ANTHROPIC_KEY` secret. |
 | `functions/api/sign.js` | Looks up a whole-word sign video on signasl.org. |
 
@@ -60,9 +60,9 @@ The twelve words on the home screen are chosen in `app.js` (`HOME_WORDS`).
 
 `id` 是 PokéAPI 编号。特殊形态（阿罗拉、Mega、超极巨化等）用大于 10000 的编号。精选名单优先于 `pokedex.json`：有拼音，点开不用再查。
 
-Searching also checks the full national dex in English and Simplified Chinese (`pokedex.json`, official zh-Hans names). Lucario / 路卡利欧 is not in the curated file; search still opens the same artwork card as a tap in the dex. Names come from PokéAPI. To refresh `pokedex.json` after a new generation:
+Searching checks curated Pokémon and the full national dex (English, ignoring spaces and punctuation, and Simplified Chinese). One match opens that card. Several matches — `pikachu`, `皮卡丘`, `charizard`, `喷火龙` — show every form as a tappable sprite, with an exact name highlighted first. A normal word such as `cat` still opens the word card. Lucario / 路卡利欧 is not curated; that single match still opens the same artwork card as a tap in the dex. To refresh `pokedex.json` after a new generation:
 
-搜索还会对照全国图鉴的英文名和简体中文名。路卡利欧不在精选名单里，搜索也会打开和图鉴里点按相同的卡片。更新图鉴可以重新生成 `pokedex.json`：
+搜索会对照精选宝可梦和全国图鉴（英文不区分大小写，忽略空格和标点；中文用简体）。只命中一只就打开卡片。命中多只时（比如 pikachu、皮卡丘、charizard、喷火龙）会把每一种形态都画成可以点的小图，完全同名的排在最前面并高亮。普通单词（比如 cat）仍然打开单词卡。路卡利欧不在精选名单里，只命中它一只时，会打开和图鉴里点按相同的卡片。更新图鉴可以重新生成 `pokedex.json`：
 
 ```bash
 curl -o /tmp/poke.json "https://pokeapi.co/api/v2/pokemon?limit=1025"
@@ -99,9 +99,9 @@ From this folder:
 python3 -m http.server 8787
 ```
 
-Open `http://localhost:8787`. Words, both themes, the dex, and Pokémon search work with that. Microphone search needs a browser that supports speech recognition (Safari or Chrome).
+Open `http://localhost:8787`. The kid home screen, words, the dex, and Pokémon search work with that. Microphone search needs a browser that supports speech recognition (Safari or Chrome).
 
-打开 `http://localhost:8787`。单词、两套主题、图鉴和宝可梦搜索都可以这样看。麦克风搜索需要 Safari 或 Chrome。
+打开 `http://localhost:8787`。儿童首页、单词、图鉴和宝可梦搜索都可以这样看。麦克风搜索需要 Safari 或 Chrome。
 
 AI definitions and sign videos need the Pages functions. With [Wrangler](https://developers.cloudflare.com/pages/functions/local-development/):
 
@@ -131,6 +131,6 @@ Pushing to `master` deploys the site. Work on another branch and open a pull req
 
 ## Fonts · 字体
 
-Fredoka (kid theme) and IBM Plex Sans (adult theme) are under the [SIL Open Font License](fonts/OFL-Fredoka.txt). Only the latin and latin-ext slices are included, in weights 500, 600, and 700. Chinese (Noto Sans SC, PingFang, Microsoft YaHei, and similar) comes from the device, so the page does not download a multi-megabyte CJK font.
+Fredoka is under the [SIL Open Font License](fonts/OFL-Fredoka.txt). Only the latin and latin-ext slices are included, in weights 500, 600, and 700. Chinese (Noto Sans SC, PingFang, Microsoft YaHei, and similar) comes from the device, so the page does not download a multi-megabyte CJK font.
 
-Fredoka（儿童主题）和 IBM Plex Sans（成人主题）使用 SIL Open Font License。只带了拉丁文和拉丁文扩展（拼音声调），字重 500、600、700。中文走系统字体，所以不会再下载一整套中文字体文件。
+Fredoka 使用 SIL Open Font License。只带了拉丁文和拉丁文扩展（拼音声调），字重 500、600、700。中文走系统字体，所以不会再下载一整套中文字体文件。
