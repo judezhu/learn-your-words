@@ -45,10 +45,12 @@
         <div id="result-badge" class="badge" hidden>✨ 专门为你查到的</div>
         <div id="result-art" class="art"></div>
         <div id="zh-line" class="word-line">
-          <span id="result-zh" class="zh-word"></span>
+          <div class="zh-stack">
+            <div id="result-py" class="pinyin" hidden></div>
+            <span id="result-zh" class="zh-word"></span>
+          </div>
           <button type="button" id="speak-zh" class="speak speak-zh" title="用中文读" aria-label="用中文读">🔊</button>
         </div>
-        <div id="result-py" class="pinyin"></div>
         <div class="word-line en-line">
           <span id="result-en" class="en-word"></span>
           <button type="button" id="speak-en" class="speak speak-en" title="用英文读" aria-label="用英文读">🔊</button>

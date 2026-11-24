@@ -356,12 +356,13 @@ img { max-width: 100%; }
 }
 .word-line {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   gap: 12px;
   margin-top: 10px;
+  max-width: 100%;
 }
-.en-line { margin-top: 6px; }
+.en-line { margin-top: 6px; align-items: center; }
 .en-word {
   font-family: var(--title);
   font-weight: 600;
@@ -370,19 +371,59 @@ img { max-width: 100%; }
   letter-spacing: -0.3px;
   overflow-wrap: anywhere;
 }
+.zh-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  max-width: calc(100% - 52px);
+}
 .zh-word {
+  display: block;
+  max-width: 100%;
   font-family: var(--cjk);
   font-weight: 700;
   font-size: 46px;
   color: var(--text);
   line-height: 1.15;
 }
+.zh-ruby {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+  row-gap: 6px;
+}
+.zh-cell {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  white-space: nowrap;
+}
+.zh-core {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.zh-py {
+  font-family: var(--title);
+  font-size: 0.3em;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--accent-2);
+  min-height: 1.15em;
+  white-space: nowrap;
+}
+.zh-ch, .zh-punct { line-height: 1.15; }
 .pinyin {
-  font-family: var(--cjk);
-  font-size: 22px;
+  font-family: var(--title);
+  font-size: 16px;
+  line-height: 1.3;
   color: var(--accent-2);
   font-weight: 600;
-  margin-top: 2px;
+  margin-bottom: 2px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .label-zh {
   font-family: var(--cjk);

@@ -974,6 +974,82 @@ function bindArtTilt(stage, tilt) {
   stage.addEventListener('pointercancel', endTouch);
 }
 
+// A character that should sit under its own pinyin syllable.
+// Punctuation (parentheses, middle dots) stays in the line with no syllable.
+const ZH_SLOT = /[\p{Script=Han}A-Za-z0-9\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A]/u;
+const ZH_OPEN = new Set([...'（(【「『〈《[{']);
+
+function chineseRuby(zh, py) {
+  const syllables = String(py || '').trim().split(/\s+/).filter(Boolean);
+  const chars = [...zh];
+  const slots = chars.filter((ch) => ZH_SLOT.test(ch)).length;
+  if (!syllables.length || slots !== syllables.length) return null;
+  const pieces = [];
+  let pending = '';
+  let i = 0;
+  for (const ch of chars) {
+    if (ZH_SLOT.test(ch)) {
+      pieces.push({ py: syllables[i++], before: pending, ch, after: '' });
+      pending = '';
+    } else if (ZH_OPEN.has(ch) || !pieces.length) {
+      pending += ch;
+    } else {
+      pieces[pieces.length - 1].after += ch;
+    }
+  }
+  if (pending && pieces.length) pieces[pieces.length - 1].after += pending;
+  const wrap = document.createElement('span');
+  wrap.className = 'zh-ruby';
+  for (const piece of pieces) {
+    const cell = document.createElement('span');
+    cell.className = 'zh-cell';
+    const core = document.createElement('span');
+    core.className = 'zh-core';
+    const pyEl = document.createElement('span');
+    pyEl.className = 'zh-py';
+    pyEl.textContent = piece.py;
+    const chEl = document.createElement('span');
+    chEl.className = 'zh-ch';
+    chEl.textContent = piece.ch;
+    core.append(pyEl, chEl);
+    if (piece.before) {
+      const mark = document.createElement('span');
+      mark.className = 'zh-punct';
+      mark.textContent = piece.before;
+      cell.append(mark);
+    }
+    cell.append(core);
+    if (piece.after) {
+      const mark = document.createElement('span');
+      mark.className = 'zh-punct';
+      mark.textContent = piece.after;
+      cell.append(mark);
+    }
+    wrap.append(cell);
+  }
+  return wrap;
+}
+
+function fitChinese() {
+  const ruby = ui.zh.querySelector('.zh-ruby');
+  if (!ruby || ui.zhLine.hidden) return;
+  ui.zh.style.fontSize = '';
+  const rows = () => {
+    const groups = new Map();
+    for (const el of ruby.children) groups.set(el.offsetTop, (groups.get(el.offsetTop) || 0) + 1);
+    return [...groups.values()];
+  };
+  const orphan = (lines) => lines.length > 1 && lines[lines.length - 1] === 1;
+  let size = 46;
+  let lines = rows();
+  while (orphan(lines) && size > 34) {
+    size -= 2;
+    ui.zh.style.fontSize = size + 'px';
+    lines = rows();
+  }
+  if (orphan(lines)) ui.zh.style.fontSize = '';
+}
+
 function renderResult() {
   const r = state.result;
   const key = r ? [r.enD, r.zh, r.pinyin, r.img || '', r.emoji || '', r.ai ? 1 : 0, r.exEn || '', r.exZh || ''].join('\n') : '';
@@ -986,10 +1062,22 @@ function renderResult() {
   ui.en.textContent = r.enD || r.en || '';
   const zh = r.zh || '';
   const py = r.pinyin || '';
-  ui.zh.textContent = zh;
   ui.zhLine.hidden = !zh;
-  ui.py.textContent = py;
-  ui.py.hidden = !py;
+  ui.zh.replaceChildren();
+  ui.py.textContent = '';
+  ui.py.hidden = true;
+  if (zh) {
+    const ruby = chineseRuby(zh, py);
+    if (ruby) ui.zh.append(ruby);
+    else {
+      ui.zh.textContent = zh;
+      if (py) {
+        ui.py.textContent = py;
+        ui.py.hidden = false;
+      }
+    }
+    fitChinese();
+  }
 
   ui.art.replaceChildren();
   if (r.img) {
@@ -1499,6 +1587,7 @@ function bind() {
   });
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', onScroll);
+  window.addEventListener('resize', fitChinese);
 }
 
 loadCache();
