@@ -23,7 +23,7 @@
         <span class="search-icon" aria-hidden="true">🔍</span>
         <input id="q" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="输入单词，按回车" aria-label="搜索">
         <button type="button" id="btn-clear" class="clear" hidden title="Clear" aria-label="清除 Clear">✕</button>
-        <button type="button" id="btn-mic" class="mic" title="Speak" aria-label="Speak">🎤</button>
+        <button type="button" id="btn-mic" class="mic" title="说话" aria-label="说话" aria-pressed="false">🎤</button>
       </div>
 
       <div class="mic-langs">
@@ -32,8 +32,11 @@
         <button type="button" id="btn-mic-en" class="pill">EN</button>
       </div>
 
-      <div id="mic-listen" class="listen" hidden>🎙️ 正在听… 说一个词！</div>
-      <div id="mic-msg" class="mic-msg" hidden></div>
+      <div id="mic-listen" class="listen" hidden>🎙️ 正在听… 说一个词，再点一下就停</div>
+      <div id="mic-msg" class="mic-msg" hidden>
+        <p id="mic-msg-text"></p>
+        <button type="button" id="btn-mic-retry" class="retry" hidden>再说一次</button>
+      </div>
 
       <div id="looking" class="looking" hidden>
         <div class="spinner" aria-hidden="true"></div>
@@ -129,6 +132,7 @@
     </div>
   </div>
 
+  <script src="voice-match.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
